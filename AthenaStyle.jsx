@@ -113,11 +113,11 @@ function ScreenHeader({ title, onBack }) {
     <div className="flex items-center gap-3 mb-1">
       <button
         onClick={onBack}
-        className="w-9 h-9 flex items-center justify-center rounded-full bg-white shadow-sm text-teal shrink-0"
+        className="w-9 h-9 flex items-center justify-center rounded-full bg-pink/25 shadow-sm text-mauve shrink-0"
       >
         <ArrowLeft size={18} />
       </button>
-      <h1 className="text-teal font-semibold text-lg">{title}</h1>
+      <h1 className="text-mauve font-semibold text-lg">{title}</h1>
     </div>
   );
 }
@@ -158,7 +158,7 @@ function FilterChip({ active, onClick, children }) {
     <button
       onClick={onClick}
       className={`shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium transition ${
-        active ? 'bg-teal text-cream' : 'bg-white text-teal/70 border border-bluegray/40'
+        active ? 'bg-mauve text-cream' : 'bg-pink/15 text-teal/70 border border-bluegray/40'
       }`}
     >
       {children}
@@ -168,19 +168,19 @@ function FilterChip({ active, onClick, children }) {
 
 function BottomNav({ active, onChange }) {
   return (
-    <div className="shrink-0 bg-white/90 backdrop-blur border-t border-bluegray/30 px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 flex justify-between">
+    <div className="shrink-0 bg-pink/15 backdrop-blur border-t border-bluegray/30 px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 flex justify-between">
       {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
         const isActive = active === id;
         return (
           <button key={id} onClick={() => onChange(id)} className="flex-1 flex flex-col items-center gap-1 py-1">
             <div
               className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors ${
-                isActive ? 'bg-teal text-cream' : 'text-mauve'
+                isActive ? 'bg-mauve text-cream' : 'text-teal/40'
               }`}
             >
               <Icon size={20} />
             </div>
-            <span className={`text-[11px] font-medium ${isActive ? 'text-teal' : 'text-mauve/70'}`}>{label}</span>
+            <span className={`text-[11px] font-medium ${isActive ? 'text-mauve' : 'text-teal/35'}`}>{label}</span>
           </button>
         );
       })}
@@ -195,14 +195,14 @@ function HomeScreen({ today, todayOutfit, clothesById, clothes, onOpenOutfit, on
       <div className="flex items-center justify-between">
         <div>
           <p className="text-mauve text-sm">Bonjour Marie ✨</p>
-          <h1 className="text-teal text-2xl font-semibold">Ta journée</h1>
+          <h1 className="text-mauve text-2xl font-semibold">Ta journée</h1>
         </div>
-        <div className="w-11 h-11 rounded-full bg-mauve/20 flex items-center justify-center text-teal font-semibold">
+        <div className="w-11 h-11 rounded-full bg-pink/50 flex items-center justify-center text-mauve font-semibold">
           MB
         </div>
       </div>
 
-      <div className="bg-teal rounded-3xl p-5 text-cream shadow-lg flex items-center justify-between">
+      <div className="bg-mauve rounded-3xl p-5 text-cream shadow-lg flex items-center justify-between">
         <div>
           <p className="text-cream/70 text-xs uppercase tracking-wide">Météo du jour</p>
           <p className="text-3xl font-semibold mt-1">{today.weather.temp}°</p>
@@ -212,9 +212,9 @@ function HomeScreen({ today, todayOutfit, clothesById, clothes, onOpenOutfit, on
       </div>
 
       {todayOutfit && (
-        <div className="bg-white rounded-3xl p-4 shadow-sm">
+        <div className="bg-pink/15 rounded-3xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-teal font-semibold">Ta tenue du jour</h2>
+            <h2 className="text-mauve font-semibold">Ta tenue du jour</h2>
             <span className="text-xs text-mauve bg-pink/40 px-2 py-1 rounded-full">
               {todayOutfit.scores.weatherFit}% adapté
             </span>
@@ -226,7 +226,7 @@ function HomeScreen({ today, todayOutfit, clothesById, clothes, onOpenOutfit, on
           </div>
           <button
             onClick={onOpenOutfit}
-            className="w-full bg-teal text-cream rounded-full py-3 font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition"
+            className="w-full bg-mauve text-cream rounded-full py-3 font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition"
           >
             Voir le détail <ChevronRight size={18} />
           </button>
@@ -234,18 +234,18 @@ function HomeScreen({ today, todayOutfit, clothesById, clothes, onOpenOutfit, on
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <button onClick={onOpenWeek} className="bg-bluegray/40 rounded-2xl p-4 flex flex-col items-start gap-2 text-left">
-          <Calendar size={22} className="text-teal" />
-          <span className="text-teal font-medium text-sm">Ma semaine</span>
+        <button onClick={onOpenWeek} className="bg-bluegray/25 rounded-2xl p-4 flex flex-col items-start gap-2 text-left">
+          <Calendar size={22} className="text-teal/70" />
+          <span className="text-teal/70 font-medium text-sm">Ma semaine</span>
         </button>
         <button onClick={onOpenAdd} className="bg-pink/50 rounded-2xl p-4 flex flex-col items-start gap-2 text-left">
-          <Plus size={22} className="text-teal" />
-          <span className="text-teal font-medium text-sm">Ajouter un vêtement</span>
+          <Plus size={22} className="text-mauve" />
+          <span className="text-mauve font-medium text-sm">Ajouter un vêtement</span>
         </button>
       </div>
 
       <div>
-        <h2 className="text-teal font-semibold mb-3">Dressing récent</h2>
+        <h2 className="text-mauve font-semibold mb-3">Dressing récent</h2>
         <div className="flex gap-3 overflow-x-auto pb-1">
           {clothes
             .slice(-6)
@@ -268,7 +268,7 @@ function DressingScreen({ clothes }) {
   return (
     <div className="px-5 pt-6 pb-24">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-teal text-2xl font-semibold">Mon Dressing</h1>
+        <h1 className="text-mauve text-2xl font-semibold">Mon Dressing</h1>
         <span className="text-xs text-mauve bg-pink/40 px-2 py-1 rounded-full">{clothes.length} pièces</span>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-3 mb-3">
@@ -288,7 +288,7 @@ function DressingScreen({ clothes }) {
           {filtered.map((item) => {
             const meta = CATEGORIES.find((c) => c.id === item.category);
             return (
-              <div key={item.id} className="bg-white rounded-2xl p-2.5 shadow-sm flex flex-col gap-2 text-left">
+              <div key={item.id} className="bg-pink/15 rounded-2xl p-2.5 shadow-sm flex flex-col gap-2 text-left">
                 <ClothingThumb item={item} className="w-full aspect-square" iconSize={28} />
                 <div>
                   <p className="text-sm font-medium text-teal truncate">{item.name}</p>
@@ -322,11 +322,11 @@ function ChatScreen({ messages, onSend }) {
   return (
     <div className="flex flex-col h-full">
       <div className="px-5 pt-6 pb-3 flex items-center gap-3 shrink-0">
-        <div className="w-11 h-11 rounded-full bg-teal flex items-center justify-center text-cream">
+        <div className="w-11 h-11 rounded-full bg-mauve flex items-center justify-center text-cream">
           <Sparkles size={20} />
         </div>
         <div>
-          <h1 className="text-teal font-semibold text-lg">Athena</h1>
+          <h1 className="text-mauve font-semibold text-lg">Athena</h1>
           <p className="text-xs text-mauve">Ta styliste IA</p>
         </div>
       </div>
@@ -337,8 +337,8 @@ function ChatScreen({ messages, onSend }) {
             key={m.id}
             className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
               m.from === 'athena'
-                ? 'bg-white text-teal self-start rounded-tl-sm shadow-sm'
-                : 'bg-teal text-cream self-end rounded-tr-sm'
+                ? 'bg-pink/20 text-teal self-start rounded-tl-sm shadow-sm'
+                : 'bg-mauve text-cream self-end rounded-tr-sm'
             }`}
           >
             {m.text}
@@ -352,7 +352,7 @@ function ChatScreen({ messages, onSend }) {
           <button
             key={p}
             onClick={() => handleSend(p)}
-            className="shrink-0 text-xs px-3 py-1.5 rounded-full bg-pink/50 text-teal font-medium"
+            className="shrink-0 text-xs px-3 py-1.5 rounded-full bg-pink/50 text-mauve font-medium"
           >
             {p}
           </button>
@@ -367,11 +367,11 @@ function ChatScreen({ messages, onSend }) {
             if (e.key === 'Enter') handleSend(text);
           }}
           placeholder="Écris à Athena..."
-          className="flex-1 bg-white rounded-full px-4 py-2.5 text-sm text-teal placeholder:text-mauve/60 outline-none shadow-sm"
+          className="flex-1 bg-pink/15 rounded-full px-4 py-2.5 text-sm text-teal placeholder:text-mauve/60 outline-none shadow-sm"
         />
         <button
           onClick={() => handleSend(text)}
-          className="w-11 h-11 rounded-full bg-teal text-cream flex items-center justify-center shrink-0 active:scale-95 transition"
+          className="w-11 h-11 rounded-full bg-mauve text-cream flex items-center justify-center shrink-0 active:scale-95 transition"
         >
           <Send size={18} />
         </button>
@@ -384,7 +384,7 @@ function FavoritesScreen({ outfits, favorites, clothesById, onOpen, onToggleFavo
   const favOutfits = outfits.filter((o) => favorites.includes(o.id));
   return (
     <div className="px-5 pt-6 pb-6">
-      <h1 className="text-teal text-2xl font-semibold mb-4">Mes Favoris</h1>
+      <h1 className="text-mauve text-2xl font-semibold mb-4">Mes Favoris</h1>
       {favOutfits.length === 0 ? (
         <div className="text-center text-mauve py-20 flex flex-col items-center gap-3">
           <Heart size={32} className="text-mauve/50" />
@@ -396,7 +396,7 @@ function FavoritesScreen({ outfits, favorites, clothesById, onOpen, onToggleFavo
             <div
               key={o.id}
               onClick={() => onOpen(o.id)}
-              className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 text-left cursor-pointer"
+              className="bg-pink/15 rounded-2xl p-4 shadow-sm flex items-center gap-3 text-left cursor-pointer"
             >
               <div className="flex -space-x-3">
                 {o.itemIds.slice(0, 3).map((id) => (
@@ -404,7 +404,7 @@ function FavoritesScreen({ outfits, favorites, clothesById, onOpen, onToggleFavo
                 ))}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-teal truncate">{o.name}</p>
+                <p className="font-medium text-mauve truncate">{o.name}</p>
                 <p className="text-xs text-mauve">
                   Style {o.scores.style}% · Confort {o.scores.comfort}%
                 </p>
@@ -428,7 +428,7 @@ function FavoritesScreen({ outfits, favorites, clothesById, onOpen, onToggleFavo
 
 function StatCard({ label, value }) {
   return (
-    <div className="bg-white rounded-2xl py-3 flex flex-col items-center shadow-sm">
+    <div className="bg-pink/15 rounded-2xl py-3 flex flex-col items-center shadow-sm">
       <span className="text-teal text-lg font-semibold">{value}</span>
       <span className="text-mauve text-[11px]">{label}</span>
     </div>
@@ -450,7 +450,7 @@ function ToggleRow({ label, value, onChange }) {
       <span className="text-teal text-sm">{label}</span>
       <button
         onClick={() => onChange(!value)}
-        className={`w-11 h-6 rounded-full transition-colors relative ${value ? 'bg-teal' : 'bg-bluegray/50'}`}
+        className={`w-11 h-6 rounded-full transition-colors relative ${value ? 'bg-mauve' : 'bg-bluegray/50'}`}
       >
         <span
           className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
@@ -467,11 +467,11 @@ function ProfileScreen({ clothes, outfits, favorites }) {
   return (
     <div className="px-5 pt-6 pb-6 flex flex-col gap-5">
       <div className="flex flex-col items-center gap-3 pt-2">
-        <div className="w-20 h-20 rounded-full bg-mauve/25 flex items-center justify-center text-teal text-2xl font-semibold">
+        <div className="w-20 h-20 rounded-full bg-pink/50 flex items-center justify-center text-mauve text-2xl font-semibold">
           MB
         </div>
         <div className="text-center">
-          <h1 className="text-teal text-xl font-semibold">Marie Brunette</h1>
+          <h1 className="text-mauve text-xl font-semibold">Marie Brunette</h1>
           <p className="text-mauve text-sm">marie.brunette35@gmail.com</p>
         </div>
       </div>
@@ -482,7 +482,7 @@ function ProfileScreen({ clothes, outfits, favorites }) {
         <StatCard label="Favoris" value={favorites.length} />
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm divide-y divide-bluegray/20 overflow-hidden">
+      <div className="bg-pink/10 rounded-2xl shadow-sm divide-y divide-bluegray/20 overflow-hidden">
         <SettingRow label="Préférences météo" />
         <SettingRow label="Taille & mensurations" />
         <SettingRow label="Style préféré" />
@@ -523,8 +523,8 @@ function AddItemScreen({ onBack, onSave }) {
     <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
       <ScreenHeader title="Ajouter un vêtement" onBack={onBack} />
 
-      <div className="bg-white rounded-3xl p-4 shadow-sm">
-        <div className="w-full aspect-[4/3] rounded-2xl border-2 border-dashed border-bluegray/60 bg-cream flex items-center justify-center overflow-hidden mb-3">
+      <div className="bg-pink/15 rounded-3xl p-4 shadow-sm">
+        <div className="w-full aspect-[4/3] rounded-2xl border-2 border-dashed border-mauve/40 bg-cream flex items-center justify-center overflow-hidden mb-3">
           {photo ? (
             <img src={photo} alt="Aperçu" className="w-full h-full object-cover" />
           ) : (
@@ -537,7 +537,7 @@ function AddItemScreen({ onBack, onSave }) {
         <div className="flex gap-2">
           <button
             onClick={() => cameraInputRef.current?.click()}
-            className="flex-1 flex items-center justify-center gap-2 bg-teal text-cream rounded-full py-2.5 text-sm font-medium"
+            className="flex-1 flex items-center justify-center gap-2 bg-mauve text-cream rounded-full py-2.5 text-sm font-medium"
           >
             <Camera size={16} /> Prendre une photo
           </button>
@@ -565,7 +565,7 @@ function AddItemScreen({ onBack, onSave }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Ex : Chemise en lin"
-          className="w-full bg-white rounded-xl px-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+          className="w-full bg-pink/15 rounded-xl px-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
         />
       </div>
 
@@ -580,7 +580,7 @@ function AddItemScreen({ onBack, onSave }) {
                 key={c.id}
                 onClick={() => setCategory(c.id)}
                 className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border transition ${
-                  active ? 'bg-teal border-teal text-cream' : 'bg-white border-bluegray/30 text-teal'
+                  active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
                 }`}
               >
                 <Icon size={20} />
@@ -595,7 +595,7 @@ function AddItemScreen({ onBack, onSave }) {
         onClick={handleSubmit}
         disabled={!category}
         className={`w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 transition ${
-          category ? 'bg-teal text-cream active:scale-[0.98]' : 'bg-bluegray/40 text-teal/40'
+          category ? 'bg-mauve text-cream active:scale-[0.98]' : 'bg-bluegray/40 text-teal/40'
         }`}
       >
         <Check size={18} /> Valider
@@ -619,7 +619,7 @@ function OutfitDetailScreen({ outfit, clothesById, isFavorite, onToggleFavorite,
     <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
       <ScreenHeader title="Ta tenue du jour" onBack={onBack} />
 
-      <div className="bg-white rounded-3xl p-4 shadow-sm">
+      <div className="bg-pink/15 rounded-3xl p-4 shadow-sm">
         <div className="grid grid-cols-3 gap-2 mb-4">
           {outfit.itemIds.map((id) => (
             <div key={id} className="flex flex-col items-center gap-1">
@@ -630,7 +630,7 @@ function OutfitDetailScreen({ outfit, clothesById, isFavorite, onToggleFavorite,
         </div>
         <div className="flex items-center justify-between bg-cream rounded-2xl px-4 py-3">
           <div>
-            <p className="text-teal font-semibold">{outfit.name}</p>
+            <p className="text-mauve font-semibold">{outfit.name}</p>
             <p className="text-xs text-mauve">Météo prévue : {WEATHER_LABELS[outfit.weather.condition]}</p>
           </div>
           <div className="flex items-center gap-1.5 text-teal">
@@ -640,9 +640,9 @@ function OutfitDetailScreen({ outfit, clothesById, isFavorite, onToggleFavorite,
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl p-4 shadow-sm flex flex-col gap-4">
-        <h2 className="text-teal font-semibold">Scores</h2>
-        <ScoreBar label="Confort" value={outfit.scores.comfort} color="#335056" />
+      <div className="bg-pink/15 rounded-3xl p-4 shadow-sm flex flex-col gap-4">
+        <h2 className="text-mauve font-semibold">Scores</h2>
+        <ScoreBar label="Confort" value={outfit.scores.comfort} color="#E3CCCA" />
         <ScoreBar label="Style" value={outfit.scores.style} color="#957882" />
         <ScoreBar label="Adéquation météo" value={outfit.scores.weatherFit} color="#AEC1C1" />
       </div>
@@ -650,7 +650,7 @@ function OutfitDetailScreen({ outfit, clothesById, isFavorite, onToggleFavorite,
       <button
         onClick={onToggleFavorite}
         className={`w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 transition active:scale-[0.98] ${
-          isFavorite ? 'bg-mauve text-cream' : 'bg-teal text-cream'
+          isFavorite ? 'bg-pink text-mauve' : 'bg-mauve text-cream'
         }`}
       >
         <Heart size={18} fill={isFavorite ? 'currentColor' : 'none'} />
@@ -680,7 +680,7 @@ function WeekScreen({ week, outfits, clothesById, onPrepare, onOpenOutfit, onBac
           const outfit = outfits.find((o) => o.id === day.outfitId);
           const Icon = WEATHER_ICONS[day.weather.condition] ?? Sun;
           return (
-            <div key={day.day} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
+            <div key={day.day} className="bg-pink/15 rounded-2xl p-4 shadow-sm flex items-center gap-3">
               <div className="w-14 flex flex-col items-center shrink-0">
                 <span className="text-teal font-semibold text-sm">{day.day.slice(0, 3)}</span>
                 <div className="flex items-center gap-1 text-mauve mt-1">
@@ -696,7 +696,7 @@ function WeekScreen({ week, outfits, clothesById, onPrepare, onOpenOutfit, onBac
                     ))}
                   </div>
                   <div className="min-w-0 text-left">
-                    <p className="text-sm font-medium text-teal truncate">{outfit.name}</p>
+                    <p className="text-sm font-medium text-mauve truncate">{outfit.name}</p>
                   </div>
                   <ChevronRight size={16} className="text-mauve ml-auto shrink-0" />
                 </button>
@@ -711,7 +711,7 @@ function WeekScreen({ week, outfits, clothesById, onPrepare, onOpenOutfit, onBac
       <button
         onClick={handlePrepare}
         disabled={preparing}
-        className="w-full bg-teal text-cream rounded-full py-3.5 font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition disabled:opacity-70"
+        className="w-full bg-mauve text-cream rounded-full py-3.5 font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition disabled:opacity-70"
       >
         <Sparkles size={18} />
         {preparing ? 'Athena prépare ta semaine...' : 'Préparer ma semaine'}
@@ -832,7 +832,7 @@ export default function AthenaStyle() {
         {showFab && (
           <button
             onClick={() => openScreen('add-item')}
-            className="absolute right-5 bottom-24 w-14 h-14 rounded-full bg-teal text-cream shadow-lg flex items-center justify-center active:scale-95 transition z-20"
+            className="absolute right-5 bottom-24 w-14 h-14 rounded-full bg-mauve text-cream shadow-lg flex items-center justify-center active:scale-95 transition z-20"
           >
             <Plus size={24} />
           </button>
