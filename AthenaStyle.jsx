@@ -47,6 +47,21 @@ const NAV_ITEMS = [
   { id: 'profile', label: 'Profil', icon: User },
 ];
 
+const SENSITIVITY_OPTIONS = [
+  { id: 'froid', label: "J'ai souvent froid" },
+  { id: 'normal', label: "Je suis à l'aise" },
+  { id: 'chaud', label: "J'ai souvent chaud" },
+];
+
+const MEASUREMENT_FIELDS = [
+  { id: 'height', label: 'Taille (cm)', placeholder: 'Ex : 168' },
+  { id: 'chest', label: 'Tour de poitrine (cm)', placeholder: 'Ex : 90' },
+  { id: 'waist', label: 'Tour de taille (cm)', placeholder: 'Ex : 70' },
+  { id: 'shoeSize', label: 'Pointure', placeholder: 'Ex : 38' },
+];
+
+const STYLE_OPTIONS = ['Casual', 'Chic', 'Bohème', 'Sportswear', 'Minimaliste'];
+
 const seedClothes = [
   { id: 'c1', name: 'Chemise en lin blanche', category: 'haut', photo: null, color: '#EDEAE2' },
   { id: 'c2', name: 'Pull col rond mauve', category: 'haut', photo: null, color: '#957882' },
@@ -435,11 +450,14 @@ function StatCard({ label, value }) {
   );
 }
 
-function SettingRow({ label }) {
+function SettingRow({ label, value, onClick }) {
   return (
-    <button className="w-full flex items-center justify-between px-4 py-3.5 text-left">
-      <span className="text-teal text-sm">{label}</span>
-      <ChevronRight size={16} className="text-mauve" />
+    <button onClick={onClick} className="w-full flex items-center justify-between px-4 py-3.5 text-left gap-3">
+      <div className="min-w-0">
+        <span className="text-teal text-sm block">{label}</span>
+        {value && <span className="text-mauve text-xs truncate block mt-0.5">{value}</span>}
+      </div>
+      <ChevronRight size={16} className="text-mauve shrink-0" />
     </button>
   );
 }
@@ -462,8 +480,35 @@ function ToggleRow({ label, value, onChange }) {
   );
 }
 
-function ProfileScreen({ clothes, outfits, favorites }) {
-  const [notif, setNotif] = useState(true);
+function ProfileScreen({
+  clothes,
+  outfits,
+  favorites,
+  weatherPrefs,
+  measurements,
+  stylePrefs,
+  notif,
+  onToggleNotif,
+  onOpenWeatherPrefs,
+  onOpenMeasurements,
+  onOpenStylePrefs,
+  onLogoutClick,
+}) {
+  const weatherValue = weatherPrefs.city
+    ? [weatherPrefs.city, SENSITIVITY_OPTIONS.find((o) => o.id === weatherPrefs.sensitivity)?.label]
+        .filter(Boolean)
+        .join(' · ')
+    : undefined;
+
+  const hasMeasurements = MEASUREMENT_FIELDS.some((f) => measurements[f.id]);
+  const measurementsValue = hasMeasurements
+    ? [measurements.height && `${measurements.height} cm`, measurements.shoeSize && `Pointure ${measurements.shoeSize}`]
+        .filter(Boolean)
+        .join(' · ') || 'Renseignées'
+    : undefined;
+
+  const styleValue = stylePrefs.length ? stylePrefs.join(', ') : undefined;
+
   return (
     <div className="px-5 pt-6 pb-6 flex flex-col gap-5">
       <div className="flex flex-col items-center gap-3 pt-2">
@@ -483,13 +528,161 @@ function ProfileScreen({ clothes, outfits, favorites }) {
       </div>
 
       <div className="bg-pink/10 rounded-2xl shadow-sm divide-y divide-bluegray/20 overflow-hidden">
-        <SettingRow label="Préférences météo" />
-        <SettingRow label="Taille & mensurations" />
-        <SettingRow label="Style préféré" />
-        <ToggleRow label="Notifications" value={notif} onChange={setNotif} />
+        <SettingRow label="Préférences météo" value={weatherValue} onClick={onOpenWeatherPrefs} />
+        <SettingRow label="Taille & mensurations" value={measurementsValue} onClick={onOpenMeasurements} />
+        <SettingRow label="Style préféré" value={styleValue} onClick={onOpenStylePrefs} />
+        <ToggleRow label="Notifications" value={notif} onChange={onToggleNotif} />
       </div>
 
-      <button className="w-full text-mauve text-sm py-3 font-medium">Se déconnecter</button>
+      <button onClick={onLogoutClick} className="w-full text-mauve text-sm py-3 font-medium">
+        Se déconnecter
+      </button>
+    </div>
+  );
+}
+
+function WeatherPrefsScreen({ prefs, onSave, onBack }) {
+  const [city, setCity] = useState(prefs.city);
+  const [sensitivity, setSensitivity] = useState(prefs.sensitivity);
+
+  return (
+    <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
+      <ScreenHeader title="Préférences météo" onBack={onBack} />
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Ville</label>
+        <input
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+          placeholder="Ex : Paris"
+          className="w-full bg-pink/15 rounded-xl px-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+        />
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Ressenti de la température</label>
+        <div className="flex flex-col gap-2">
+          {SENSITIVITY_OPTIONS.map((o) => {
+            const active = sensitivity === o.id;
+            return (
+              <button
+                key={o.id}
+                onClick={() => setSensitivity(o.id)}
+                className={`w-full text-left px-4 py-3 rounded-2xl border transition ${
+                  active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                }`}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <button
+        onClick={() => onSave({ city: city.trim(), sensitivity })}
+        className="w-full bg-mauve text-cream rounded-full py-3.5 font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition"
+      >
+        <Check size={18} /> Enregistrer
+      </button>
+    </div>
+  );
+}
+
+function MeasurementsScreen({ measurements, onSave, onBack }) {
+  const [values, setValues] = useState(measurements);
+
+  function update(id, val) {
+    setValues((prev) => ({ ...prev, [id]: val }));
+  }
+
+  return (
+    <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
+      <ScreenHeader title="Taille & mensurations" onBack={onBack} />
+
+      <div className="grid grid-cols-2 gap-4">
+        {MEASUREMENT_FIELDS.map((f) => (
+          <div key={f.id}>
+            <label className="text-teal text-sm font-medium mb-2 block">{f.label}</label>
+            <input
+              value={values[f.id]}
+              onChange={(e) => update(f.id, e.target.value)}
+              placeholder={f.placeholder}
+              inputMode="numeric"
+              className="w-full bg-pink/15 rounded-xl px-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+            />
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={() => onSave(values)}
+        className="w-full bg-mauve text-cream rounded-full py-3.5 font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition"
+      >
+        <Check size={18} /> Enregistrer
+      </button>
+    </div>
+  );
+}
+
+function StylePrefsScreen({ selected, onSave, onBack }) {
+  const [chosen, setChosen] = useState(selected);
+
+  function toggle(style) {
+    setChosen((prev) => (prev.includes(style) ? prev.filter((s) => s !== style) : [...prev, style]));
+  }
+
+  return (
+    <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
+      <ScreenHeader title="Style préféré" onBack={onBack} />
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Choisis un ou plusieurs styles</label>
+        <div className="flex flex-wrap gap-2">
+          {STYLE_OPTIONS.map((style) => {
+            const active = chosen.includes(style);
+            return (
+              <button
+                key={style}
+                onClick={() => toggle(style)}
+                className={`px-4 py-2 rounded-full text-sm font-medium border transition ${
+                  active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                }`}
+              >
+                {style}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <button
+        onClick={() => onSave(chosen)}
+        className="w-full bg-mauve text-cream rounded-full py-3.5 font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition"
+      >
+        <Check size={18} /> Enregistrer
+      </button>
+    </div>
+  );
+}
+
+function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm }) {
+  return (
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-teal/40 backdrop-blur-sm px-6">
+      <div className="w-full bg-cream rounded-3xl p-5 shadow-2xl flex flex-col gap-4">
+        <div>
+          <h2 className="text-mauve font-semibold text-lg mb-1">{title}</h2>
+          <p className="text-teal text-sm">{message}</p>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 bg-bluegray/30 text-teal rounded-full py-2.5 text-sm font-medium">
+            Annuler
+          </button>
+          <button onClick={onConfirm} className="flex-1 bg-mauve text-cream rounded-full py-2.5 text-sm font-medium">
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -728,6 +921,11 @@ export default function AthenaStyle() {
   const [messages, setMessages] = useState(seedMessages);
   const [tab, setTab] = useState('home');
   const [screen, setScreen] = useState({ name: 'main' });
+  const [weatherPrefs, setWeatherPrefs] = useState({ city: 'Paris', sensitivity: null });
+  const [measurements, setMeasurements] = useState({ height: '', chest: '', waist: '', shoeSize: '' });
+  const [stylePrefs, setStylePrefs] = useState([]);
+  const [notif, setNotif] = useState(true);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const clothesById = useMemo(() => Object.fromEntries(clothes.map((c) => [c.id, c])), [clothes]);
   const today = week[0];
@@ -805,9 +1003,52 @@ export default function AthenaStyle() {
             />
           )}
           {screen.name === 'main' && tab === 'profile' && (
-            <ProfileScreen clothes={clothes} outfits={outfits} favorites={favorites} />
+            <ProfileScreen
+              clothes={clothes}
+              outfits={outfits}
+              favorites={favorites}
+              weatherPrefs={weatherPrefs}
+              measurements={measurements}
+              stylePrefs={stylePrefs}
+              notif={notif}
+              onToggleNotif={setNotif}
+              onOpenWeatherPrefs={() => openScreen('weather-prefs')}
+              onOpenMeasurements={() => openScreen('measurements')}
+              onOpenStylePrefs={() => openScreen('style-prefs')}
+              onLogoutClick={() => setShowLogoutConfirm(true)}
+            />
           )}
           {screen.name === 'add-item' && <AddItemScreen onBack={goBack} onSave={addClothing} />}
+          {screen.name === 'weather-prefs' && (
+            <WeatherPrefsScreen
+              prefs={weatherPrefs}
+              onSave={(p) => {
+                setWeatherPrefs(p);
+                goBack();
+              }}
+              onBack={goBack}
+            />
+          )}
+          {screen.name === 'measurements' && (
+            <MeasurementsScreen
+              measurements={measurements}
+              onSave={(m) => {
+                setMeasurements(m);
+                goBack();
+              }}
+              onBack={goBack}
+            />
+          )}
+          {screen.name === 'style-prefs' && (
+            <StylePrefsScreen
+              selected={stylePrefs}
+              onSave={(s) => {
+                setStylePrefs(s);
+                goBack();
+              }}
+              onBack={goBack}
+            />
+          )}
           {screen.name === 'outfit-detail' && (
             <OutfitDetailScreen
               outfit={outfits.find((o) => o.id === screen.outfitId)}
@@ -839,6 +1080,16 @@ export default function AthenaStyle() {
         )}
 
         <BottomNav active={tab} onChange={switchTab} />
+
+        {showLogoutConfirm && (
+          <ConfirmDialog
+            title="Déconnexion"
+            message="Voulez-vous vraiment vous déconnecter ?"
+            confirmLabel="Confirmer"
+            onCancel={() => setShowLogoutConfirm(false)}
+            onConfirm={() => setShowLogoutConfirm(false)}
+          />
+        )}
       </div>
     </div>
   );
