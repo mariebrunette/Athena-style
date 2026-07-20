@@ -537,13 +537,13 @@ function AddItemScreen({ onBack, onSave }) {
         <div className="flex gap-2">
           <button
             onClick={() => cameraInputRef.current?.click()}
-            className="flex-1 flex items-center justify-center gap-2 bg-mauve text-cream rounded-full py-2.5 text-sm font-medium"
+            className="flex-1 flex items-center justify-center gap-2 bg-mauve text-cream rounded-full py-2.5 px-2 text-sm font-medium whitespace-nowrap"
           >
-            <Camera size={16} /> Prendre une photo
+            <Camera size={16} /> Caméra
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex-1 flex items-center justify-center gap-2 bg-bluegray/40 text-teal rounded-full py-2.5 text-sm font-medium"
+            className="flex-1 flex items-center justify-center gap-2 bg-bluegray/40 text-teal rounded-full py-2.5 px-2 text-sm font-medium whitespace-nowrap"
           >
             <Upload size={16} /> Galerie
           </button>
