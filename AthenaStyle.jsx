@@ -3,6 +3,7 @@ import {
   Home, Shirt, Sparkles, Heart, User, Plus, Camera, Upload, Check,
   ArrowLeft, Send, Calendar, Sun, CloudSun, Cloud, CloudRain, Wind,
   Footprints, Watch, ChevronRight, TrendingUp, Clock, Lightbulb,
+  Loader2, MapPin, RefreshCw,
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -22,6 +23,24 @@ const PLACEHOLDER_COLORS = {
   chaussures: '#C9B79C',
   accessoire: '#8B5E3C',
 };
+
+const AI_DETECTION_SAMPLES = [
+  { name: 'Chemise à rayures', category: 'haut', color: '#EDEAE2', colorFamily: 'blanc', warmth: 'leger' },
+  { name: 'Pull en maille', category: 'haut', color: '#957882', colorFamily: 'rose', warmth: 'chaud' },
+  { name: 'Jean slim', category: 'bas', color: '#3E4A5C', colorFamily: 'bleu', warmth: 'chaud' },
+  { name: 'Pantalon fluide', category: 'bas', color: '#335056', colorFamily: 'bleu', warmth: 'leger' },
+  { name: 'Robe portefeuille', category: 'robe', color: '#E3CCCA', colorFamily: 'rose', warmth: 'leger' },
+  { name: 'Blazer structuré', category: 'veste', color: '#AEC1C1', colorFamily: 'bleu', warmth: 'leger' },
+  { name: 'Manteau long', category: 'veste', color: '#8B5E3C', colorFamily: 'marron', warmth: 'chaud' },
+  { name: 'Baskets running', category: 'chaussures', color: '#F2F2F2', colorFamily: 'blanc', warmth: 'leger' },
+  { name: 'Bottines en cuir', category: 'chaussures', color: '#3E2723', colorFamily: 'noir', warmth: 'chaud' },
+  { name: 'Sac bandoulière', category: 'accessoire', color: '#C9B79C', colorFamily: 'beige', warmth: 'leger' },
+  { name: 'Ceinture en cuir', category: 'accessoire', color: '#8B5E3C', colorFamily: 'marron', warmth: 'leger' },
+];
+
+function detectClothingFromPhoto() {
+  return AI_DETECTION_SAMPLES[Math.floor(Math.random() * AI_DETECTION_SAMPLES.length)];
+}
 
 const WEATHER_ICONS = {
   soleil: Sun,
@@ -67,6 +86,57 @@ const WEATHER_SCENARIOS = [
   { id: 'pluie', label: 'Pluie', weather: { temp: 15, condition: 'pluie' } },
   { id: 'froid', label: 'Froid', weather: { temp: 4, condition: 'nuageux' } },
 ];
+
+const DEFAULT_LOCATION = { name: 'Valence', latitude: 44.9334, longitude: 4.8924 };
+
+const RAIN_WEATHER_CODES = new Set([
+  51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86, 95, 96, 99,
+]);
+
+function mapWeatherCode(code, windSpeed) {
+  if (RAIN_WEATHER_CODES.has(code)) return 'pluie';
+  if ((windSpeed ?? 0) >= 30) return 'venteux';
+  if (code === 0 || code === 1) return 'soleil';
+  if (code === 3 || code === 45 || code === 48) return 'couvert';
+  return 'nuageux';
+}
+
+function getBrowserLocation(timeoutMs = 6000) {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      reject(new Error('Géolocalisation non disponible'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      (err) => reject(err),
+      { timeout: timeoutMs, maximumAge: 10 * 60 * 1000 },
+    );
+  });
+}
+
+async function geocodeCity(cityName) {
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=fr&format=json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Géocodage indisponible');
+  const data = await res.json();
+  const match = data?.results?.[0];
+  if (!match) return null;
+  return { name: match.name, latitude: match.latitude, longitude: match.longitude };
+}
+
+async function fetchWeatherForLocation({ latitude, longitude }) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Météo indisponible');
+  const data = await res.json();
+  return {
+    temp: Math.round(data.current.temperature_2m),
+    condition: mapWeatherCode(data.current.weather_code, data.current.wind_speed_10m),
+    tempMax: Math.round(data.daily.temperature_2m_max[0]),
+    tempMin: Math.round(data.daily.temperature_2m_min[0]),
+  };
+}
 
 const seedClothes = [
   { id: 'c1', name: 'Chemise en lin blanche', category: 'haut', photo: null, color: '#EDEAE2', colorFamily: 'blanc', warmth: 'leger', laundry: false, wearCount: 14, monthsSinceWorn: 1 },
@@ -116,11 +186,19 @@ function computeStyleScores(items, weather) {
   return { colorMatch, weatherFit, elegance, comfort, originality };
 }
 
-function pickByCategory(pool, category, warmthPref) {
+function pickPreferred(pool, category, { warmthPref, colorFamilies } = {}) {
   const inCat = pool.filter((c) => c.category === category);
   if (!inCat.length) return null;
-  const preferred = inCat.filter((c) => c.warmth === warmthPref);
-  return preferred[0] || inCat[0];
+  let candidates = inCat;
+  if (colorFamilies?.length) {
+    const colorMatch = candidates.filter((c) => colorFamilies.includes(c.colorFamily));
+    if (colorMatch.length) candidates = colorMatch;
+  }
+  if (warmthPref) {
+    const warmthMatch = candidates.filter((c) => c.warmth === warmthPref);
+    if (warmthMatch.length) candidates = warmthMatch;
+  }
+  return candidates[0] || inCat[0];
 }
 
 function generateOutfitForWeather(clothes, weather) {
@@ -130,25 +208,25 @@ function generateOutfitForWeather(clothes, weather) {
   const warmthPref = isCold ? 'chaud' : 'leger';
 
   const items = [];
-  const dress = !isRain && !isCold && weather.temp >= 20 ? pickByCategory(pool, 'robe', 'leger') : null;
+  const dress = !isRain && !isCold && weather.temp >= 20 ? pickPreferred(pool, 'robe', { warmthPref }) : null;
   if (dress) {
     items.push(dress);
   } else {
-    const haut = pickByCategory(pool, 'haut', warmthPref);
-    const bas = pickByCategory(pool, 'bas', warmthPref);
+    const haut = pickPreferred(pool, 'haut', { warmthPref });
+    const bas = pickPreferred(pool, 'bas', { warmthPref });
     if (haut) items.push(haut);
     if (bas) items.push(bas);
   }
 
-  const chaussures = pickByCategory(pool, 'chaussures', warmthPref);
+  const chaussures = pickPreferred(pool, 'chaussures', { warmthPref });
   if (chaussures) items.push(chaussures);
 
   if (isRain || isCold) {
-    const veste = pickByCategory(pool, 'veste', warmthPref);
+    const veste = pickPreferred(pool, 'veste', { warmthPref });
     if (veste) items.push(veste);
   }
 
-  const accessoire = pickByCategory(pool, 'accessoire', warmthPref);
+  const accessoire = pickPreferred(pool, 'accessoire', { warmthPref });
   if (accessoire) items.push(accessoire);
 
   const name = isRain ? 'Look pluie protégé' : isCold ? 'Look bien au chaud' : 'Look léger du jour';
@@ -156,6 +234,96 @@ function generateOutfitForWeather(clothes, weather) {
   return {
     id: 'today',
     name,
+    itemIds: items.map((i) => i.id),
+    weather,
+    scores: computeStyleScores(items, weather),
+  };
+}
+
+const CONTEXT_RULES = [
+  {
+    id: 'professionnel',
+    keywords: ['entretien', 'travail', 'bureau', 'boulot', 'professionnel', 'réunion', 'reunion', 'meeting'],
+    label: 'un look professionnel',
+    outfitName: 'Look professionnel',
+    preferCategories: ['veste'],
+    preferColorFamilies: ['bleu', 'blanc', 'beige'],
+  },
+  {
+    id: 'soiree',
+    keywords: ['soirée', 'soiree', 'resto', 'restaurant', 'rendez-vous', 'rdv', 'date', 'sortie'],
+    label: 'une tenue élégante pour ta soirée',
+    outfitName: 'Look soirée',
+    preferCategories: ['robe'],
+    preferColorFamilies: ['rose', 'noir'],
+  },
+  {
+    id: 'old-money',
+    keywords: ['old money', 'preppy', 'chic discret'],
+    label: 'un look old money',
+    outfitName: 'Look old money',
+    preferCategories: ['veste'],
+    preferColorFamilies: ['beige', 'marron', 'blanc', 'bleu'],
+  },
+  {
+    id: 'sport',
+    keywords: ['sport', 'gym', 'courir', 'running', 'yoga', 'fitness'],
+    label: 'une tenue sport',
+    outfitName: 'Look sport',
+    preferCategories: [],
+    preferColorFamilies: [],
+    forceWarmth: 'leger',
+  },
+  {
+    id: 'casual',
+    keywords: ['casual', 'décontracté', 'decontracte', 'weekend', 'balade', 'chill'],
+    label: 'un look décontracté',
+    outfitName: 'Look décontracté',
+    preferCategories: [],
+    preferColorFamilies: [],
+  },
+];
+
+function detectContext(text) {
+  const t = text.toLowerCase();
+  return CONTEXT_RULES.find((rule) => rule.keywords.some((k) => t.includes(k))) || null;
+}
+
+function composeOutfitForContext(clothes, contextRule, weather) {
+  const pool = clothes.filter((c) => !c.laundry);
+  const isRain = weather.condition === 'pluie';
+  const isCold = weather.temp < 10;
+  const warmthPref = contextRule.forceWarmth || (isCold ? 'chaud' : 'leger');
+  const colorFamilies = contextRule.preferColorFamilies;
+
+  const items = [];
+  const dress = contextRule.preferCategories.includes('robe')
+    ? pickPreferred(pool, 'robe', { warmthPref, colorFamilies })
+    : null;
+
+  if (dress) {
+    items.push(dress);
+  } else {
+    const haut = pickPreferred(pool, 'haut', { warmthPref, colorFamilies });
+    const bas = pickPreferred(pool, 'bas', { warmthPref, colorFamilies });
+    if (haut) items.push(haut);
+    if (bas) items.push(bas);
+  }
+
+  const chaussures = pickPreferred(pool, 'chaussures', { warmthPref, colorFamilies });
+  if (chaussures) items.push(chaussures);
+
+  if (contextRule.preferCategories.includes('veste') || isRain || isCold) {
+    const veste = pickPreferred(pool, 'veste', { warmthPref, colorFamilies });
+    if (veste) items.push(veste);
+  }
+
+  const accessoire = pickPreferred(pool, 'accessoire', { warmthPref, colorFamilies });
+  if (accessoire) items.push(accessoire);
+
+  return {
+    id: `context-${Date.now()}`,
+    name: contextRule.outfitName,
     itemIds: items.map((i) => i.id),
     weather,
     scores: computeStyleScores(items, weather),
@@ -271,18 +439,39 @@ const seedMessages = [
   },
 ];
 
-function generateAthenaReply(text, { todayOutfit }) {
+function generateAthenaResponse(text, { clothes, weather, todayOutfit }) {
   const t = text.toLowerCase();
+
   if (t.includes('pluie') || t.includes('pleu')) {
-    return "S'il pleut, je te conseille ton trench ou une veste imperméable, avec des chaussures fermées. Je peux te préparer une tenue adaptée si tu veux !";
+    const outfit = generateOutfitForWeather(clothes, { ...weather, condition: 'pluie' });
+    return {
+      text: "S'il pleut, mise sur une veste imperméable et des chaussures fermées. Voici ce que je te propose :",
+      outfit: outfit.itemIds.length ? outfit : undefined,
+    };
   }
+
+  const context = detectContext(text);
+  if (context) {
+    const outfit = composeOutfitForContext(clothes, context, weather);
+    if (!outfit.itemIds.length) {
+      return {
+        text: `J'ai bien noté pour ${context.label}, mais je ne trouve pas assez de pièces disponibles dans ton dressing (vérifie ton linge au lavage) !`,
+      };
+    }
+    return { text: `Parfait, je te compose ${context.label} avec ce que tu as dans ton dressing :`, outfit };
+  }
+
   if (t.includes('confort')) {
-    return `Pour un maximum de confort, "${todayOutfit?.name}" est un excellent choix aujourd'hui : ${todayOutfit?.scores.comfort}% de confort estimé.`;
+    return {
+      text: `Pour un maximum de confort, "${todayOutfit.name}" est un excellent choix aujourd'hui : ${todayOutfit.scores.comfort}% de confort estimé.`,
+      outfit: todayOutfit.itemIds.length ? todayOutfit : undefined,
+    };
   }
-  if (t.includes('rendez-vous') || t.includes('rdv') || t.includes('sortie')) {
-    return "Pour une occasion spéciale, mise sur une pièce qui te met en valeur, associée à un accessoire soigné. Regarde du côté de tes robes ou vestes structurées.";
-  }
-  return `Aujourd'hui, je te propose plutôt "${todayOutfit?.name}", bien adapté à la météo du jour. Va voir l'onglet Accueil pour le détail !`;
+
+  return {
+    text: `Aujourd'hui, je te propose plutôt "${todayOutfit.name}", bien adapté à la météo du jour.`,
+    outfit: todayOutfit.itemIds.length ? todayOutfit : undefined,
+  };
 }
 
 function ScreenHeader({ title, onBack }) {
@@ -365,7 +554,18 @@ function BottomNav({ active, onChange }) {
   );
 }
 
-function HomeScreen({ weather, onChangeWeather, todayOutfit, clothesById, clothes, onOpenOutfit, onOpenWeek, onOpenAdd }) {
+function HomeScreen({
+  weather,
+  weatherMeta,
+  onRefreshWeather,
+  onChangeWeather,
+  todayOutfit,
+  clothesById,
+  clothes,
+  onOpenOutfit,
+  onOpenWeek,
+  onOpenAdd,
+}) {
   const WeatherIcon = WEATHER_ICONS[weather.condition] ?? Sun;
   return (
     <div className="px-5 pt-6 pb-6 flex flex-col gap-6">
@@ -379,31 +579,53 @@ function HomeScreen({ weather, onChangeWeather, todayOutfit, clothesById, clothe
         </div>
       </div>
 
-      <div className="bg-mauve rounded-3xl p-5 text-cream shadow-lg flex items-center justify-between">
-        <div>
-          <p className="text-cream/70 text-xs uppercase tracking-wide">Météo du jour</p>
+      <div className="bg-mauve rounded-3xl p-5 text-cream shadow-lg flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <p className="text-cream/70 text-xs uppercase tracking-wide">Météo du jour</p>
+            {weatherMeta.loading && <Loader2 size={11} className="animate-spin text-cream/70 shrink-0" />}
+          </div>
           <p className="text-3xl font-semibold mt-1">{weather.temp}°</p>
           <p className="text-sm text-cream/80">{WEATHER_LABELS[weather.condition]}</p>
+          <p className="text-xs text-cream/60 mt-1.5 flex items-center gap-1 truncate">
+            <MapPin size={11} className="shrink-0" />
+            <span className="truncate">{weatherMeta.location || '…'}</span>
+            {weatherMeta.tempMax != null && (
+              <span className="shrink-0">
+                · ↑{weatherMeta.tempMax}° ↓{weatherMeta.tempMin}°
+              </span>
+            )}
+          </p>
         </div>
-        <WeatherIcon size={48} className="text-pink" />
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          <WeatherIcon size={40} className="text-pink" />
+          <button onClick={onRefreshWeather} className="text-cream/70 p-1 -m-1">
+            <RefreshCw size={14} className={weatherMeta.loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
-      <div className="flex gap-2">
-        {WEATHER_SCENARIOS.map((s) => {
-          const Icon = WEATHER_ICONS[s.weather.condition] ?? Sun;
-          const active = weather.condition === s.weather.condition && weather.temp === s.weather.temp;
-          return (
-            <button
-              key={s.id}
-              onClick={() => onChangeWeather(s.weather)}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-full py-2 text-xs font-medium transition whitespace-nowrap ${
-                active ? 'bg-mauve text-cream' : 'bg-pink/15 text-mauve'
-              }`}
-            >
-              <Icon size={14} /> {s.label}
-            </button>
-          );
-        })}
+      {weatherMeta.error && <p className="text-xs text-mauve/70 -mt-3 px-1">{weatherMeta.error}</p>}
+
+      <div>
+        <p className="text-xs text-mauve/60 mb-1.5 px-1">Tester un scénario météo</p>
+        <div className="flex gap-2">
+          {WEATHER_SCENARIOS.map((s) => {
+            const Icon = WEATHER_ICONS[s.weather.condition] ?? Sun;
+            const active = weather.condition === s.weather.condition && weather.temp === s.weather.temp;
+            return (
+              <button
+                key={s.id}
+                onClick={() => onChangeWeather(s.weather)}
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-full py-2 text-xs font-medium transition whitespace-nowrap ${
+                  active ? 'bg-mauve text-cream' : 'bg-pink/15 text-mauve'
+                }`}
+              >
+                <Icon size={14} /> {s.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="bg-pink/15 rounded-3xl p-4 shadow-sm">
@@ -535,7 +757,7 @@ function DressingScreen({ clothes, onToggleLaundry }) {
   );
 }
 
-function ChatScreen({ messages, onSend }) {
+function ChatScreen({ messages, onSend, clothesById, onOpenOutfit }) {
   const [text, setText] = useState('');
   const endRef = useRef(null);
 
@@ -543,7 +765,7 @@ function ChatScreen({ messages, onSend }) {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const quickPrompts = ["Que porter s'il pleut ?", 'Une tenue confortable', 'Idée pour un rendez-vous'];
+  const quickPrompts = ["Que porter s'il pleut ?", 'Une tenue confortable', "J'ai un entretien", 'Look old money'];
 
   function handleSend(t) {
     if (!t.trim()) return;
@@ -567,13 +789,28 @@ function ChatScreen({ messages, onSend }) {
         {messages.map((m) => (
           <div
             key={m.id}
-            className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+            className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
               m.from === 'athena'
                 ? 'bg-pink/20 text-teal self-start rounded-tl-sm shadow-sm'
                 : 'bg-mauve text-cream self-end rounded-tr-sm'
             }`}
           >
             {m.text}
+            {m.outfit && (
+              <div className="mt-2.5 pt-2.5 border-t border-mauve/20">
+                <div className="flex gap-1.5 mb-2">
+                  {m.outfit.itemIds.map((id) => (
+                    <ClothingThumb key={id} item={clothesById[id]} className="w-10 h-10" iconSize={16} />
+                  ))}
+                </div>
+                <button
+                  onClick={() => onOpenOutfit(m.outfit)}
+                  className="text-xs font-semibold text-mauve underline underline-offset-2"
+                >
+                  {m.outfit.name} · Voir le détail
+                </button>
+              </div>
+            )}
           </div>
         ))}
         <div ref={endRef} />
@@ -970,6 +1207,11 @@ function AddItemScreen({ onBack, onSave }) {
   const [photo, setPhoto] = useState(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState(null);
+  const [color, setColor] = useState(undefined);
+  const [colorFamily, setColorFamily] = useState(undefined);
+  const [warmth, setWarmth] = useState('leger');
+  const [detecting, setDetecting] = useState(false);
+  const [autoDetected, setAutoDetected] = useState(false);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
@@ -977,7 +1219,21 @@ function AddItemScreen({ onBack, onSave }) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setPhoto(reader.result);
+    reader.onload = () => {
+      setPhoto(reader.result);
+      setAutoDetected(false);
+      setDetecting(true);
+      setTimeout(() => {
+        const detected = detectClothingFromPhoto();
+        setName(detected.name);
+        setCategory(detected.category);
+        setColor(detected.color);
+        setColorFamily(detected.colorFamily);
+        setWarmth(detected.warmth);
+        setDetecting(false);
+        setAutoDetected(true);
+      }, 1200 + Math.random() * 800);
+    };
     reader.readAsDataURL(file);
   }
 
@@ -987,7 +1243,9 @@ function AddItemScreen({ onBack, onSave }) {
       name: name.trim() || `${CATEGORIES.find((c) => c.id === category).label} sans nom`,
       category,
       photo,
-      color: photo ? undefined : PLACEHOLDER_COLORS[category],
+      color: color ?? (photo ? undefined : PLACEHOLDER_COLORS[category]),
+      colorFamily,
+      warmth,
     });
   }
 
@@ -996,7 +1254,7 @@ function AddItemScreen({ onBack, onSave }) {
       <ScreenHeader title="Ajouter un vêtement" onBack={onBack} />
 
       <div className="bg-pink/15 rounded-3xl p-4 shadow-sm">
-        <div className="w-full aspect-[4/3] rounded-2xl border-2 border-dashed border-mauve/40 bg-cream flex items-center justify-center overflow-hidden mb-3">
+        <div className="w-full aspect-[4/3] rounded-2xl border-2 border-dashed border-mauve/40 bg-cream flex items-center justify-center overflow-hidden mb-3 relative">
           {photo ? (
             <img src={photo} alt="Aperçu" className="w-full h-full object-cover" />
           ) : (
@@ -1005,17 +1263,25 @@ function AddItemScreen({ onBack, onSave }) {
               <span className="text-sm">Ajoute une photo</span>
             </div>
           )}
+          {detecting && (
+            <div className="absolute inset-0 bg-teal/60 backdrop-blur-sm flex flex-col items-center justify-center gap-2 text-cream">
+              <Loader2 size={26} className="animate-spin" />
+              <span className="text-sm font-medium">Analyse de la photo...</span>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => cameraInputRef.current?.click()}
-            className="flex-1 flex items-center justify-center gap-2 bg-mauve text-cream rounded-full py-2.5 px-2 text-sm font-medium whitespace-nowrap"
+            disabled={detecting}
+            className="flex-1 flex items-center justify-center gap-2 bg-mauve text-cream rounded-full py-2.5 px-2 text-sm font-medium whitespace-nowrap disabled:opacity-60"
           >
             <Camera size={16} /> Caméra
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex-1 flex items-center justify-center gap-2 bg-bluegray/40 text-teal rounded-full py-2.5 px-2 text-sm font-medium whitespace-nowrap"
+            disabled={detecting}
+            className="flex-1 flex items-center justify-center gap-2 bg-bluegray/40 text-teal rounded-full py-2.5 px-2 text-sm font-medium whitespace-nowrap disabled:opacity-60"
           >
             <Upload size={16} /> Galerie
           </button>
@@ -1030,6 +1296,12 @@ function AddItemScreen({ onBack, onSave }) {
         />
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
       </div>
+
+      {autoDetected && (
+        <p className="text-xs text-mauve flex items-center gap-1.5 -mt-3 px-1">
+          <Sparkles size={12} className="shrink-0" /> Détecté automatiquement, tu peux ajuster si besoin
+        </p>
+      )}
 
       <div>
         <label className="text-teal text-sm font-medium mb-2 block">Nom (optionnel)</label>
@@ -1065,9 +1337,9 @@ function AddItemScreen({ onBack, onSave }) {
 
       <button
         onClick={handleSubmit}
-        disabled={!category}
+        disabled={!category || detecting}
         className={`w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 transition ${
-          category ? 'bg-mauve text-cream active:scale-[0.98]' : 'bg-bluegray/40 text-teal/40'
+          category && !detecting ? 'bg-mauve text-cream active:scale-[0.98]' : 'bg-bluegray/40 text-teal/40'
         }`}
       >
         <Check size={18} /> Valider
@@ -1207,16 +1479,58 @@ export default function AthenaStyle() {
   const [stylePrefs, setStylePrefs] = useState([]);
   const [notif, setNotif] = useState(true);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [simulatedWeather, setSimulatedWeather] = useState({ temp: 18, condition: 'nuageux' });
+  const [todayWeather, setTodayWeather] = useState({ temp: 18, condition: 'nuageux' });
+  const [weatherMeta, setWeatherMeta] = useState({
+    loading: true,
+    error: null,
+    location: null,
+    tempMax: null,
+    tempMin: null,
+  });
 
   const clothesById = useMemo(() => Object.fromEntries(clothes.map((c) => [c.id, c])), [clothes]);
-  const todayOutfit = useMemo(() => generateOutfitForWeather(clothes, simulatedWeather), [clothes, simulatedWeather]);
+  const todayOutfit = useMemo(() => generateOutfitForWeather(clothes, todayWeather), [clothes, todayWeather]);
   const outfitDetailOutfit =
-    screen.name === 'outfit-detail'
-      ? screen.outfitId === 'today'
-        ? todayOutfit
-        : outfits.find((o) => o.id === screen.outfitId)
-      : null;
+    screen.name === 'outfit-detail' ? screen.outfit || outfits.find((o) => o.id === screen.outfitId) : null;
+
+  async function refreshWeather() {
+    setWeatherMeta((m) => ({ ...m, loading: true, error: null }));
+    let location = null;
+    try {
+      const coords = await getBrowserLocation();
+      location = { ...coords, name: 'Ma position' };
+    } catch {
+      location = null;
+    }
+    if (!location && weatherPrefs.city) {
+      location = await geocodeCity(weatherPrefs.city).catch(() => null);
+    }
+    if (!location) {
+      location = DEFAULT_LOCATION;
+    }
+    try {
+      const data = await fetchWeatherForLocation(location);
+      setTodayWeather({ temp: data.temp, condition: data.condition });
+      setWeatherMeta({
+        loading: false,
+        error: null,
+        location: location.name,
+        tempMax: data.tempMax,
+        tempMin: data.tempMin,
+      });
+    } catch {
+      setWeatherMeta((m) => ({
+        ...m,
+        loading: false,
+        error: 'Météo indisponible pour le moment, données par défaut utilisées.',
+      }));
+    }
+  }
+
+  useEffect(() => {
+    refreshWeather();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function openScreen(name, params = {}) {
     setScreen({ name, ...params });
@@ -1250,7 +1564,8 @@ export default function AthenaStyle() {
   }
 
   function handleOutfitSave(outfit) {
-    if (outfit.id === 'today') {
+    const alreadySaved = outfits.some((o) => o.id === outfit.id);
+    if (!alreadySaved) {
       const newId = `outfit-${Date.now()}`;
       setOutfits((prev) => [...prev, { ...outfit, id: newId }]);
       setFavorites((prev) => [...prev, newId]);
@@ -1274,8 +1589,8 @@ export default function AthenaStyle() {
     const userMsg = { id: Date.now(), from: 'user', text };
     setMessages((prev) => [...prev, userMsg]);
     setTimeout(() => {
-      const reply = generateAthenaReply(text, { todayOutfit });
-      setMessages((prev) => [...prev, { id: Date.now() + 1, from: 'athena', text: reply }]);
+      const reply = generateAthenaResponse(text, { clothes, weather: todayWeather, todayOutfit });
+      setMessages((prev) => [...prev, { id: Date.now() + 1, from: 'athena', text: reply.text, outfit: reply.outfit }]);
     }, 700);
   }
 
@@ -1287,12 +1602,14 @@ export default function AthenaStyle() {
         <div className="flex-1 overflow-y-auto">
           {screen.name === 'main' && tab === 'home' && (
             <HomeScreen
-              weather={simulatedWeather}
-              onChangeWeather={setSimulatedWeather}
+              weather={todayWeather}
+              weatherMeta={weatherMeta}
+              onRefreshWeather={refreshWeather}
+              onChangeWeather={setTodayWeather}
               todayOutfit={todayOutfit}
               clothesById={clothesById}
               clothes={clothes}
-              onOpenOutfit={() => openScreen('outfit-detail', { outfitId: todayOutfit.id })}
+              onOpenOutfit={() => openScreen('outfit-detail', { outfitId: todayOutfit.id, outfit: todayOutfit })}
               onOpenWeek={() => openScreen('week-plan')}
               onOpenAdd={() => openScreen('add-item')}
             />
@@ -1300,7 +1617,14 @@ export default function AthenaStyle() {
           {screen.name === 'main' && tab === 'dressing' && (
             <DressingScreen clothes={clothes} onToggleLaundry={toggleLaundry} />
           )}
-          {screen.name === 'main' && tab === 'ai' && <ChatScreen messages={messages} onSend={sendMessage} />}
+          {screen.name === 'main' && tab === 'ai' && (
+            <ChatScreen
+              messages={messages}
+              onSend={sendMessage}
+              clothesById={clothesById}
+              onOpenOutfit={(outfit) => openScreen('outfit-detail', { outfitId: outfit.id, outfit })}
+            />
+          )}
           {screen.name === 'main' && tab === 'favorites' && (
             <FavoritesScreen
               outfits={outfits}
