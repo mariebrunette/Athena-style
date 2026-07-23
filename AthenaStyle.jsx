@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Home, Shirt, Sparkles, Heart, User, Plus, Camera, Upload, Check,
   ArrowLeft, Send, Calendar, Sun, CloudSun, Cloud, CloudRain, Wind,
-  Footprints, Watch, ChevronRight,
+  Footprints, Watch, ChevronRight, TrendingUp, Clock, Lightbulb,
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -62,37 +62,199 @@ const MEASUREMENT_FIELDS = [
 
 const STYLE_OPTIONS = ['Casual', 'Chic', 'Bohème', 'Sportswear', 'Minimaliste'];
 
-const seedClothes = [
-  { id: 'c1', name: 'Chemise en lin blanche', category: 'haut', photo: null, color: '#EDEAE2' },
-  { id: 'c2', name: 'Pull col rond mauve', category: 'haut', photo: null, color: '#957882' },
-  { id: 'c3', name: 'Jean droit brut', category: 'bas', photo: null, color: '#3E4A5C' },
-  { id: 'c4', name: 'Pantalon tailleur', category: 'bas', photo: null, color: '#335056' },
-  { id: 'c5', name: 'Robe fluide rose poudré', category: 'robe', photo: null, color: '#E3CCCA' },
-  { id: 'c6', name: 'Veste en jean', category: 'veste', photo: null, color: '#AEC1C1' },
-  { id: 'c7', name: 'Trench beige', category: 'veste', photo: null, color: '#D8CFC0' },
-  { id: 'c8', name: 'Baskets blanches', category: 'chaussures', photo: null, color: '#F2F2F2' },
-  { id: 'c9', name: 'Mocassins bruns', category: 'chaussures', photo: null, color: '#8B5E3C' },
-  { id: 'c10', name: 'Sac cabas naturel', category: 'accessoire', photo: null, color: '#C9B79C' },
-  { id: 'c11', name: 'Écharpe mauve', category: 'accessoire', photo: null, color: '#957882' },
+const WEATHER_SCENARIOS = [
+  { id: 'doux', label: 'Doux', weather: { temp: 21, condition: 'soleil' } },
+  { id: 'pluie', label: 'Pluie', weather: { temp: 15, condition: 'pluie' } },
+  { id: 'froid', label: 'Froid', weather: { temp: 4, condition: 'nuageux' } },
 ];
 
-const seedOutfits = [
-  {
-    id: 'o1', name: 'Look bureau chic', itemIds: ['c2', 'c4', 'c9'],
-    weather: { temp: 18, condition: 'nuageux' },
-    scores: { comfort: 82, style: 90, weatherFit: 76 },
-  },
-  {
-    id: 'o2', name: 'Casual weekend', itemIds: ['c1', 'c3', 'c8', 'c6'],
-    weather: { temp: 22, condition: 'soleil' },
-    scores: { comfort: 95, style: 78, weatherFit: 88 },
-  },
-  {
-    id: 'o3', name: "Douceur d'été", itemIds: ['c5', 'c8', 'c11'],
-    weather: { temp: 24, condition: 'soleil' },
-    scores: { comfort: 88, style: 92, weatherFit: 94 },
-  },
+const seedClothes = [
+  { id: 'c1', name: 'Chemise en lin blanche', category: 'haut', photo: null, color: '#EDEAE2', colorFamily: 'blanc', warmth: 'leger', laundry: false, wearCount: 14, monthsSinceWorn: 1 },
+  { id: 'c2', name: 'Pull col rond mauve', category: 'haut', photo: null, color: '#957882', colorFamily: 'rose', warmth: 'chaud', laundry: false, wearCount: 22, monthsSinceWorn: 0 },
+  { id: 'c3', name: 'Jean droit brut', category: 'bas', photo: null, color: '#3E4A5C', colorFamily: 'bleu', warmth: 'chaud', laundry: false, wearCount: 18, monthsSinceWorn: 0 },
+  { id: 'c4', name: 'Pantalon tailleur', category: 'bas', photo: null, color: '#335056', colorFamily: 'bleu', warmth: 'leger', laundry: false, wearCount: 9, monthsSinceWorn: 2 },
+  { id: 'c5', name: 'Robe fluide rose poudré', category: 'robe', photo: null, color: '#E3CCCA', colorFamily: 'rose', warmth: 'leger', laundry: false, wearCount: 3, monthsSinceWorn: 3 },
+  { id: 'c6', name: 'Veste en jean', category: 'veste', photo: null, color: '#AEC1C1', colorFamily: 'bleu', warmth: 'leger', laundry: false, wearCount: 6, monthsSinceWorn: 1 },
+  { id: 'c7', name: 'Trench beige', category: 'veste', photo: null, color: '#D8CFC0', colorFamily: 'beige', warmth: 'chaud', laundry: false, wearCount: 1, monthsSinceWorn: 8 },
+  { id: 'c8', name: 'Baskets blanches', category: 'chaussures', photo: null, color: '#F2F2F2', colorFamily: 'blanc', warmth: 'leger', laundry: false, wearCount: 20, monthsSinceWorn: 0 },
+  { id: 'c9', name: 'Mocassins bruns', category: 'chaussures', photo: null, color: '#8B5E3C', colorFamily: 'marron', warmth: 'chaud', laundry: false, wearCount: 5, monthsSinceWorn: 4 },
+  { id: 'c10', name: 'Sac cabas naturel', category: 'accessoire', photo: null, color: '#C9B79C', colorFamily: 'beige', warmth: 'leger', laundry: false, wearCount: 8, monthsSinceWorn: 1 },
+  { id: 'c11', name: 'Écharpe mauve', category: 'accessoire', photo: null, color: '#957882', colorFamily: 'rose', warmth: 'chaud', laundry: false, wearCount: 2, monthsSinceWorn: 5 },
+  { id: 'c12', name: 'Débardeur côtelé', category: 'haut', photo: null, color: '#E3CCCA', colorFamily: 'rose', warmth: 'leger', laundry: false, wearCount: 0, monthsSinceWorn: null },
 ];
+
+function computeStyleScores(items, weather) {
+  if (!items.length) {
+    return { colorMatch: 50, weatherFit: 50, elegance: 50, comfort: 50, originality: 50 };
+  }
+
+  const isRain = weather.condition === 'pluie';
+  const isCold = weather.temp < 10;
+  const hasVeste = items.some((i) => i.category === 'veste');
+  const warmthMatch = isCold
+    ? items.every((i) => i.warmth !== 'leger')
+    : items.some((i) => i.warmth === 'leger');
+
+  const weatherFit = Math.min(
+    98,
+    65 + (isRain && hasVeste ? 20 : 0) + (isCold && warmthMatch ? 20 : 0) + (!isRain && !isCold ? 15 : 0),
+  );
+
+  const colorFamilies = new Set(items.map((i) => i.colorFamily).filter(Boolean));
+  const colorMatch = Math.min(96, Math.max(55, 96 - Math.max(0, colorFamilies.size - 1) * 12));
+
+  const warmthCategory = isCold ? 'chaud' : 'leger';
+  const comfort = Math.min(96, 70 + items.filter((i) => i.warmth === warmthCategory).length * 6);
+
+  const elegance = Math.min(
+    95,
+    60 + items.filter((i) => i.category === 'robe' || i.category === 'veste').length * 10 + (hasVeste ? 8 : 0),
+  );
+
+  const originality = Math.min(92, 50 + colorFamilies.size * 10 + (items.length >= 4 ? 10 : 0));
+
+  return { colorMatch, weatherFit, elegance, comfort, originality };
+}
+
+function pickByCategory(pool, category, warmthPref) {
+  const inCat = pool.filter((c) => c.category === category);
+  if (!inCat.length) return null;
+  const preferred = inCat.filter((c) => c.warmth === warmthPref);
+  return preferred[0] || inCat[0];
+}
+
+function generateOutfitForWeather(clothes, weather) {
+  const pool = clothes.filter((c) => !c.laundry);
+  const isRain = weather.condition === 'pluie';
+  const isCold = weather.temp < 10;
+  const warmthPref = isCold ? 'chaud' : 'leger';
+
+  const items = [];
+  const dress = !isRain && !isCold && weather.temp >= 20 ? pickByCategory(pool, 'robe', 'leger') : null;
+  if (dress) {
+    items.push(dress);
+  } else {
+    const haut = pickByCategory(pool, 'haut', warmthPref);
+    const bas = pickByCategory(pool, 'bas', warmthPref);
+    if (haut) items.push(haut);
+    if (bas) items.push(bas);
+  }
+
+  const chaussures = pickByCategory(pool, 'chaussures', warmthPref);
+  if (chaussures) items.push(chaussures);
+
+  if (isRain || isCold) {
+    const veste = pickByCategory(pool, 'veste', warmthPref);
+    if (veste) items.push(veste);
+  }
+
+  const accessoire = pickByCategory(pool, 'accessoire', warmthPref);
+  if (accessoire) items.push(accessoire);
+
+  const name = isRain ? 'Look pluie protégé' : isCold ? 'Look bien au chaud' : 'Look léger du jour';
+
+  return {
+    id: 'today',
+    name,
+    itemIds: items.map((i) => i.id),
+    weather,
+    scores: computeStyleScores(items, weather),
+  };
+}
+
+function buildWearInsights(clothes) {
+  const insights = [];
+  const worn = clothes.filter((c) => (c.wearCount ?? 0) > 0);
+  const mostWorn = worn.reduce((best, c) => (!best || c.wearCount > best.wearCount ? c : best), null);
+  if (mostWorn) {
+    const rate = Math.max(1, Math.round(mostWorn.wearCount / 7));
+    insights.push({
+      icon: TrendingUp,
+      title: mostWorn.name,
+      description:
+        mostWorn.wearCount >= 8
+          ? `Porté environ ${rate}x par semaine — ta pièce chouchou !`
+          : `Porté ${mostWorn.wearCount} fois jusqu'ici.`,
+    });
+  }
+
+  const neverWorn = clothes.filter((c) => (c.wearCount ?? 0) === 0);
+  if (neverWorn.length) {
+    insights.push({
+      icon: Clock,
+      title: neverWorn[0].name,
+      description: "Cette pièce n'a jamais été portée depuis son ajout.",
+    });
+  }
+
+  const forgotten = clothes
+    .filter((c) => (c.wearCount ?? 0) > 0 && (c.monthsSinceWorn ?? 0) >= 6)
+    .sort((a, b) => b.monthsSinceWorn - a.monthsSinceWorn);
+  if (forgotten.length) {
+    insights.push({
+      icon: Clock,
+      title: forgotten[0].name,
+      description: `Oubliée depuis ${forgotten[0].monthsSinceWorn} mois.`,
+    });
+  }
+
+  if (!insights.length) {
+    insights.push({
+      icon: TrendingUp,
+      title: 'Pas encore de données',
+      description: 'Ajoute des vêtements pour voir tes habitudes de port.',
+    });
+  }
+
+  return insights;
+}
+
+function pluralizeLabel(label, count) {
+  const lower = label.toLowerCase();
+  if (count <= 1 || lower.endsWith('s')) return lower;
+  return `${lower}s`;
+}
+
+function buildWishlistSuggestions(clothes) {
+  const suggestions = [];
+
+  const counts = CATEGORIES.map((cat) => ({
+    ...cat,
+    count: clothes.filter((c) => c.category === cat.id).length,
+  })).filter((c) => c.count > 0);
+
+  if (counts.length >= 2) {
+    const max = counts.reduce((a, b) => (b.count > a.count ? b : a));
+    const min = counts.reduce((a, b) => (b.count < a.count ? b : a));
+    if (max.count - min.count >= 2) {
+      suggestions.push({
+        icon: Lightbulb,
+        title: `Beaucoup de ${pluralizeLabel(max.label, max.count)}`,
+        description: `Tu as ${max.count} ${pluralizeLabel(max.label, max.count)}, mais seulement ${min.count} ${pluralizeLabel(min.label, min.count)}. Pense à varier !`,
+      });
+    }
+  }
+
+  const blackShoes = clothes.filter((c) => c.category === 'chaussures' && c.colorFamily === 'noir').length;
+  const totalShoes = clothes.filter((c) => c.category === 'chaussures').length;
+  if (totalShoes > 0 && blackShoes === 0) {
+    suggestions.push({
+      icon: Lightbulb,
+      title: 'Aucune chaussure noire',
+      description: 'Une paire noire est un basique polyvalent qui manque à ton dressing.',
+    });
+  }
+
+  return suggestions.slice(0, 2);
+}
+
+const seedClothesById = Object.fromEntries(seedClothes.map((c) => [c.id, c]));
+
+const seedOutfits = [
+  { id: 'o1', name: 'Look bureau chic', itemIds: ['c2', 'c4', 'c9'], weather: { temp: 18, condition: 'nuageux' } },
+  { id: 'o2', name: 'Casual weekend', itemIds: ['c1', 'c3', 'c8', 'c6'], weather: { temp: 22, condition: 'soleil' } },
+  { id: 'o3', name: "Douceur d'été", itemIds: ['c5', 'c8', 'c11'], weather: { temp: 24, condition: 'soleil' } },
+].map((o) => ({ ...o, scores: computeStyleScores(o.itemIds.map((id) => seedClothesById[id]), o.weather) }));
 
 const initialWeek = [
   { day: 'Lundi', weather: { temp: 18, condition: 'nuageux' }, outfitId: 'o1' },
@@ -203,8 +365,8 @@ function BottomNav({ active, onChange }) {
   );
 }
 
-function HomeScreen({ today, todayOutfit, clothesById, clothes, onOpenOutfit, onOpenWeek, onOpenAdd }) {
-  const WeatherIcon = WEATHER_ICONS[today.weather.condition] ?? Sun;
+function HomeScreen({ weather, onChangeWeather, todayOutfit, clothesById, clothes, onOpenOutfit, onOpenWeek, onOpenAdd }) {
+  const WeatherIcon = WEATHER_ICONS[weather.condition] ?? Sun;
   return (
     <div className="px-5 pt-6 pb-6 flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -220,33 +382,57 @@ function HomeScreen({ today, todayOutfit, clothesById, clothes, onOpenOutfit, on
       <div className="bg-mauve rounded-3xl p-5 text-cream shadow-lg flex items-center justify-between">
         <div>
           <p className="text-cream/70 text-xs uppercase tracking-wide">Météo du jour</p>
-          <p className="text-3xl font-semibold mt-1">{today.weather.temp}°</p>
-          <p className="text-sm text-cream/80">{WEATHER_LABELS[today.weather.condition]}</p>
+          <p className="text-3xl font-semibold mt-1">{weather.temp}°</p>
+          <p className="text-sm text-cream/80">{WEATHER_LABELS[weather.condition]}</p>
         </div>
         <WeatherIcon size={48} className="text-pink" />
       </div>
 
-      {todayOutfit && (
-        <div className="bg-pink/15 rounded-3xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-mauve font-semibold">Ta tenue du jour</h2>
-            <span className="text-xs text-mauve bg-pink/40 px-2 py-1 rounded-full">
-              {todayOutfit.scores.weatherFit}% adapté
-            </span>
-          </div>
-          <div className="flex gap-2 mb-4">
-            {todayOutfit.itemIds.map((id) => (
-              <ClothingThumb key={id} item={clothesById[id]} className="w-16 h-16" iconSize={26} />
-            ))}
-          </div>
-          <button
-            onClick={onOpenOutfit}
-            className="w-full bg-mauve text-cream rounded-full py-3 font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition"
-          >
-            Voir le détail <ChevronRight size={18} />
-          </button>
+      <div className="flex gap-2">
+        {WEATHER_SCENARIOS.map((s) => {
+          const Icon = WEATHER_ICONS[s.weather.condition] ?? Sun;
+          const active = weather.condition === s.weather.condition && weather.temp === s.weather.temp;
+          return (
+            <button
+              key={s.id}
+              onClick={() => onChangeWeather(s.weather)}
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-full py-2 text-xs font-medium transition whitespace-nowrap ${
+                active ? 'bg-mauve text-cream' : 'bg-pink/15 text-mauve'
+              }`}
+            >
+              <Icon size={14} /> {s.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="bg-pink/15 rounded-3xl p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-mauve font-semibold">Ta tenue du jour</h2>
+          <span className="text-xs text-mauve bg-pink/40 px-2 py-1 rounded-full">
+            {todayOutfit.scores.weatherFit}% adapté
+          </span>
         </div>
-      )}
+        {todayOutfit.itemIds.length ? (
+          <>
+            <div className="flex gap-2 mb-4">
+              {todayOutfit.itemIds.map((id) => (
+                <ClothingThumb key={id} item={clothesById[id]} className="w-16 h-16" iconSize={26} />
+              ))}
+            </div>
+            <button
+              onClick={onOpenOutfit}
+              className="w-full bg-mauve text-cream rounded-full py-3 font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition"
+            >
+              Voir le détail <ChevronRight size={18} />
+            </button>
+          </>
+        ) : (
+          <p className="text-sm text-mauve/70 py-2">
+            Pas assez de vêtements disponibles pour composer une tenue — vérifie ton linge au lavage !
+          </p>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <button onClick={onOpenWeek} className="bg-bluegray/25 rounded-2xl p-4 flex flex-col items-start gap-2 text-left">
@@ -277,7 +463,7 @@ function HomeScreen({ today, todayOutfit, clothesById, clothes, onOpenOutfit, on
   );
 }
 
-function DressingScreen({ clothes }) {
+function DressingScreen({ clothes, onToggleLaundry }) {
   const [filter, setFilter] = useState('tous');
   const filtered = filter === 'tous' ? clothes : clothes.filter((c) => c.category === filter);
   return (
@@ -303,12 +489,43 @@ function DressingScreen({ clothes }) {
           {filtered.map((item) => {
             const meta = CATEGORIES.find((c) => c.id === item.category);
             return (
-              <div key={item.id} className="bg-pink/15 rounded-2xl p-2.5 shadow-sm flex flex-col gap-2 text-left">
-                <ClothingThumb item={item} className="w-full aspect-square" iconSize={28} />
+              <div
+                key={item.id}
+                className={`bg-pink/15 rounded-2xl p-2.5 shadow-sm flex flex-col gap-2 text-left transition ${
+                  item.laundry ? 'opacity-60' : ''
+                }`}
+              >
+                <div className="relative">
+                  <ClothingThumb
+                    item={item}
+                    className={`w-full aspect-square ${item.laundry ? 'grayscale' : ''}`}
+                    iconSize={28}
+                  />
+                  {item.laundry && (
+                    <span className="absolute top-1.5 left-1.5 bg-mauve text-cream text-[9px] font-medium px-1.5 py-0.5 rounded-full">
+                      Au lavage
+                    </span>
+                  )}
+                </div>
                 <div>
                   <p className="text-sm font-medium text-teal truncate">{item.name}</p>
                   <p className="text-xs text-mauve">{meta?.label}</p>
                 </div>
+                <button
+                  onClick={() => onToggleLaundry(item.id)}
+                  className={`flex items-center gap-1.5 text-[11px] font-medium rounded-full px-2 py-1 self-start transition ${
+                    item.laundry ? 'bg-mauve text-cream' : 'bg-bluegray/25 text-teal/70'
+                  }`}
+                >
+                  <span
+                    className={`w-3.5 h-3.5 rounded flex items-center justify-center border shrink-0 ${
+                      item.laundry ? 'bg-cream border-cream' : 'border-teal/40 bg-transparent'
+                    }`}
+                  >
+                    {item.laundry && <Check size={10} className="text-mauve" />}
+                  </span>
+                  Au lavage
+                </button>
               </div>
             );
           })}
@@ -421,7 +638,7 @@ function FavoritesScreen({ outfits, favorites, clothesById, onOpen, onToggleFavo
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-mauve truncate">{o.name}</p>
                 <p className="text-xs text-mauve">
-                  Style {o.scores.style}% · Confort {o.scores.comfort}%
+                  Élégance {o.scores.elegance}% · Confort {o.scores.comfort}%
                 </p>
               </div>
               <button
@@ -446,6 +663,51 @@ function StatCard({ label, value }) {
     <div className="bg-pink/15 rounded-2xl py-3 flex flex-col items-center shadow-sm">
       <span className="text-teal text-lg font-semibold">{value}</span>
       <span className="text-mauve text-[11px]">{label}</span>
+    </div>
+  );
+}
+
+function InsightCard({ icon: Icon, title, description }) {
+  return (
+    <div className="bg-pink/15 rounded-2xl p-4 shadow-sm flex gap-3 items-start">
+      <div className="w-9 h-9 rounded-full bg-mauve/20 flex items-center justify-center text-mauve shrink-0">
+        <Icon size={18} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-teal text-sm font-medium truncate">{title}</p>
+        <p className="text-mauve text-xs mt-0.5">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function StatsScreen({ clothes, onBack }) {
+  const insights = useMemo(() => buildWearInsights(clothes), [clothes]);
+  const wishlist = useMemo(() => buildWishlistSuggestions(clothes), [clothes]);
+
+  return (
+    <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
+      <ScreenHeader title="Statistiques" onBack={onBack} />
+
+      <div>
+        <h2 className="text-mauve font-semibold mb-3">Habitudes de port</h2>
+        <div className="flex flex-col gap-3">
+          {insights.map((insight, i) => (
+            <InsightCard key={i} {...insight} />
+          ))}
+        </div>
+      </div>
+
+      {wishlist.length > 0 && (
+        <div>
+          <h2 className="text-mauve font-semibold mb-3">Idées pour ta garde-robe</h2>
+          <div className="flex flex-col gap-3">
+            {wishlist.map((tip, i) => (
+              <InsightCard key={i} {...tip} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -492,6 +754,7 @@ function ProfileScreen({
   onOpenWeatherPrefs,
   onOpenMeasurements,
   onOpenStylePrefs,
+  onOpenStats,
   onLogoutClick,
 }) {
   const weatherValue = weatherPrefs.city
@@ -526,6 +789,22 @@ function ProfileScreen({
         <StatCard label="Tenues" value={outfits.length} />
         <StatCard label="Favoris" value={favorites.length} />
       </div>
+
+      <button
+        onClick={onOpenStats}
+        className="w-full bg-mauve rounded-2xl p-4 shadow-sm flex items-center justify-between text-cream"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-cream/20 flex items-center justify-center shrink-0">
+            <TrendingUp size={18} />
+          </div>
+          <div className="text-left min-w-0">
+            <p className="text-sm font-medium">Statistiques du dressing</p>
+            <p className="text-cream/70 text-xs">Habitudes de port & suggestions</p>
+          </div>
+        </div>
+        <ChevronRight size={18} className="shrink-0" />
+      </button>
 
       <div className="bg-pink/10 rounded-2xl shadow-sm divide-y divide-bluegray/20 overflow-hidden">
         <SettingRow label="Préférences météo" value={weatherValue} onClick={onOpenWeatherPrefs} />
@@ -834,10 +1113,12 @@ function OutfitDetailScreen({ outfit, clothesById, isFavorite, onToggleFavorite,
       </div>
 
       <div className="bg-pink/15 rounded-3xl p-4 shadow-sm flex flex-col gap-4">
-        <h2 className="text-mauve font-semibold">Scores</h2>
+        <h2 className="text-mauve font-semibold">Style Score</h2>
+        <ScoreBar label="Compatibilité des couleurs" value={outfit.scores.colorMatch} color="#957882" />
+        <ScoreBar label="Adaptée à la météo" value={outfit.scores.weatherFit} color="#AEC1C1" />
+        <ScoreBar label="Élégance" value={outfit.scores.elegance} color="#957882" />
         <ScoreBar label="Confort" value={outfit.scores.comfort} color="#E3CCCA" />
-        <ScoreBar label="Style" value={outfit.scores.style} color="#957882" />
-        <ScoreBar label="Adéquation météo" value={outfit.scores.weatherFit} color="#AEC1C1" />
+        <ScoreBar label="Originalité" value={outfit.scores.originality} color="#E3CCCA" />
       </div>
 
       <button
@@ -915,7 +1196,7 @@ function WeekScreen({ week, outfits, clothesById, onPrepare, onOpenOutfit, onBac
 
 export default function AthenaStyle() {
   const [clothes, setClothes] = useState(seedClothes);
-  const [outfits] = useState(seedOutfits);
+  const [outfits, setOutfits] = useState(seedOutfits);
   const [favorites, setFavorites] = useState(['o3']);
   const [week, setWeek] = useState(initialWeek);
   const [messages, setMessages] = useState(seedMessages);
@@ -926,10 +1207,16 @@ export default function AthenaStyle() {
   const [stylePrefs, setStylePrefs] = useState([]);
   const [notif, setNotif] = useState(true);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [simulatedWeather, setSimulatedWeather] = useState({ temp: 18, condition: 'nuageux' });
 
   const clothesById = useMemo(() => Object.fromEntries(clothes.map((c) => [c.id, c])), [clothes]);
-  const today = week[0];
-  const todayOutfit = outfits.find((o) => o.id === today.outfitId);
+  const todayOutfit = useMemo(() => generateOutfitForWeather(clothes, simulatedWeather), [clothes, simulatedWeather]);
+  const outfitDetailOutfit =
+    screen.name === 'outfit-detail'
+      ? screen.outfitId === 'today'
+        ? todayOutfit
+        : outfits.find((o) => o.id === screen.outfitId)
+      : null;
 
   function openScreen(name, params = {}) {
     setScreen({ name, ...params });
@@ -946,13 +1233,31 @@ export default function AthenaStyle() {
 
   function addClothing(item) {
     const id = `c${Date.now()}`;
-    setClothes((prev) => [...prev, { id, ...item }]);
+    setClothes((prev) => [
+      ...prev,
+      { id, laundry: false, wearCount: 0, monthsSinceWorn: null, warmth: 'leger', ...item },
+    ]);
     setTab('dressing');
     setScreen({ name: 'main' });
   }
 
+  function toggleLaundry(clothingId) {
+    setClothes((prev) => prev.map((c) => (c.id === clothingId ? { ...c, laundry: !c.laundry } : c)));
+  }
+
   function toggleFavorite(outfitId) {
     setFavorites((prev) => (prev.includes(outfitId) ? prev.filter((id) => id !== outfitId) : [...prev, outfitId]));
+  }
+
+  function handleOutfitSave(outfit) {
+    if (outfit.id === 'today') {
+      const newId = `outfit-${Date.now()}`;
+      setOutfits((prev) => [...prev, { ...outfit, id: newId }]);
+      setFavorites((prev) => [...prev, newId]);
+      setScreen({ name: 'outfit-detail', outfitId: newId });
+      return;
+    }
+    toggleFavorite(outfit.id);
   }
 
   function prepareWeek() {
@@ -982,16 +1287,19 @@ export default function AthenaStyle() {
         <div className="flex-1 overflow-y-auto">
           {screen.name === 'main' && tab === 'home' && (
             <HomeScreen
-              today={today}
+              weather={simulatedWeather}
+              onChangeWeather={setSimulatedWeather}
               todayOutfit={todayOutfit}
               clothesById={clothesById}
               clothes={clothes}
-              onOpenOutfit={() => openScreen('outfit-detail', { outfitId: todayOutfit?.id })}
+              onOpenOutfit={() => openScreen('outfit-detail', { outfitId: todayOutfit.id })}
               onOpenWeek={() => openScreen('week-plan')}
               onOpenAdd={() => openScreen('add-item')}
             />
           )}
-          {screen.name === 'main' && tab === 'dressing' && <DressingScreen clothes={clothes} />}
+          {screen.name === 'main' && tab === 'dressing' && (
+            <DressingScreen clothes={clothes} onToggleLaundry={toggleLaundry} />
+          )}
           {screen.name === 'main' && tab === 'ai' && <ChatScreen messages={messages} onSend={sendMessage} />}
           {screen.name === 'main' && tab === 'favorites' && (
             <FavoritesScreen
@@ -1015,9 +1323,11 @@ export default function AthenaStyle() {
               onOpenWeatherPrefs={() => openScreen('weather-prefs')}
               onOpenMeasurements={() => openScreen('measurements')}
               onOpenStylePrefs={() => openScreen('style-prefs')}
+              onOpenStats={() => openScreen('stats')}
               onLogoutClick={() => setShowLogoutConfirm(true)}
             />
           )}
+          {screen.name === 'stats' && <StatsScreen clothes={clothes} onBack={goBack} />}
           {screen.name === 'add-item' && <AddItemScreen onBack={goBack} onSave={addClothing} />}
           {screen.name === 'weather-prefs' && (
             <WeatherPrefsScreen
@@ -1051,10 +1361,10 @@ export default function AthenaStyle() {
           )}
           {screen.name === 'outfit-detail' && (
             <OutfitDetailScreen
-              outfit={outfits.find((o) => o.id === screen.outfitId)}
+              outfit={outfitDetailOutfit}
               clothesById={clothesById}
-              isFavorite={favorites.includes(screen.outfitId)}
-              onToggleFavorite={() => toggleFavorite(screen.outfitId)}
+              isFavorite={outfitDetailOutfit ? favorites.includes(outfitDetailOutfit.id) : false}
+              onToggleFavorite={() => outfitDetailOutfit && handleOutfitSave(outfitDetailOutfit)}
               onBack={goBack}
             />
           )}
