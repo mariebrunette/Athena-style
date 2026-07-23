@@ -251,11 +251,19 @@ const CONTEXT_RULES = [
   },
   {
     id: 'soiree',
-    keywords: ['soirée', 'soiree', 'resto', 'restaurant', 'rendez-vous', 'rdv', 'date', 'sortie'],
+    keywords: ['soirée', 'soiree', 'resto', 'restaurant', 'rendez-vous', 'rdv', 'date', 'sortie', 'dîner', 'diner'],
     label: 'une tenue élégante pour ta soirée',
     outfitName: 'Look soirée',
     preferCategories: ['robe'],
     preferColorFamilies: ['rose', 'noir'],
+  },
+  {
+    id: 'mariage',
+    keywords: ['mariage', 'cérémonie', 'ceremonie'],
+    label: 'une tenue chic pour ce mariage',
+    outfitName: 'Look mariage chic',
+    preferCategories: ['robe', 'veste'],
+    preferColorFamilies: ['rose', 'beige', 'noir'],
   },
   {
     id: 'old-money',
@@ -267,7 +275,7 @@ const CONTEXT_RULES = [
   },
   {
     id: 'sport',
-    keywords: ['sport', 'gym', 'courir', 'running', 'yoga', 'fitness'],
+    keywords: ['sport', 'gym', 'courir', 'course', 'running', 'yoga', 'fitness'],
     label: 'une tenue sport',
     outfitName: 'Look sport',
     preferCategories: [],
@@ -328,6 +336,13 @@ function composeOutfitForContext(clothes, contextRule, weather) {
     weather,
     scores: computeStyleScores(items, weather),
   };
+}
+
+function composeOutfitForDay(clothes, weather, event) {
+  if (!event) return generateOutfitForWeather(clothes, weather);
+  const context = detectContext(event.title) || CONTEXT_RULES.find((r) => r.id === 'casual');
+  const outfit = composeOutfitForContext(clothes, context, weather);
+  return { ...outfit, adaptedFor: event.title };
 }
 
 function buildWearInsights(clothes) {
@@ -431,6 +446,8 @@ const initialWeek = [
   { day: 'Jeudi', weather: { temp: 19, condition: 'nuageux' }, outfitId: null },
   { day: 'Vendredi', weather: { temp: 23, condition: 'soleil' }, outfitId: null },
 ];
+
+const seedEvents = [{ id: 'e1', day: 'Jeudi', title: "Entretien d'embauche", time: '10:00' }];
 
 const seedMessages = [
   {
@@ -629,12 +646,17 @@ function HomeScreen({
       </div>
 
       <div className="bg-pink/15 rounded-3xl p-4 shadow-sm">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-2">
           <h2 className="text-mauve font-semibold">Ta tenue du jour</h2>
-          <span className="text-xs text-mauve bg-pink/40 px-2 py-1 rounded-full">
+          <span className="text-xs text-mauve bg-pink/40 px-2 py-1 rounded-full shrink-0">
             {todayOutfit.scores.weatherFit}% adapté
           </span>
         </div>
+        {todayOutfit.adaptedFor && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-mauve bg-mauve/15 px-2 py-1 rounded-full mb-3">
+            <Calendar size={11} /> Adapté pour : {todayOutfit.adaptedFor}
+          </span>
+        )}
         {todayOutfit.itemIds.length ? (
           <>
             <div className="flex gap-2 mb-4">
@@ -1182,6 +1204,73 @@ function StylePrefsScreen({ selected, onSave, onBack }) {
   );
 }
 
+function EventFormScreen({ event, day, onSave, onDelete, onBack }) {
+  const [title, setTitle] = useState(event?.title || '');
+  const [time, setTime] = useState(event?.time || '18:00');
+
+  const detected = title.trim() ? detectContext(title) || CONTEXT_RULES.find((r) => r.id === 'casual') : null;
+
+  function handleSubmit() {
+    if (!title.trim()) return;
+    onSave({ day: event?.day || day, title: title.trim(), time });
+  }
+
+  return (
+    <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
+      <ScreenHeader title={event ? "Modifier l'événement" : 'Ajouter un événement'} onBack={onBack} />
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Jour</label>
+        <p className="w-full bg-pink/15 rounded-xl px-4 py-3 text-sm text-mauve font-medium">
+          {event?.day || day}
+        </p>
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Titre</label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Ex : Réunion client"
+          className="w-full bg-pink/15 rounded-xl px-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+        />
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Heure</label>
+        <input
+          type="time"
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+          className="w-full bg-pink/15 rounded-xl px-4 py-3 text-sm text-teal outline-none shadow-sm"
+        />
+      </div>
+
+      {detected && (
+        <p className="text-xs text-mauve flex items-center gap-1.5 -mt-2 px-1">
+          <Sparkles size={12} className="shrink-0" /> Tenue "{detected.outfitName}" détectée automatiquement
+        </p>
+      )}
+
+      <button
+        onClick={handleSubmit}
+        disabled={!title.trim()}
+        className={`w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 transition ${
+          title.trim() ? 'bg-mauve text-cream active:scale-[0.98]' : 'bg-bluegray/40 text-teal/40'
+        }`}
+      >
+        <Check size={18} /> Enregistrer
+      </button>
+
+      {event && (
+        <button onClick={() => onDelete(event.id)} className="w-full text-mauve text-sm py-2 font-medium">
+          Supprimer l'événement
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm }) {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-teal/40 backdrop-blur-sm px-6">
@@ -1363,6 +1452,12 @@ function OutfitDetailScreen({ outfit, clothesById, isFavorite, onToggleFavorite,
     <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
       <ScreenHeader title="Ta tenue du jour" onBack={onBack} />
 
+      {outfit.adaptedFor && (
+        <span className="inline-flex items-center gap-1.5 text-xs text-mauve bg-mauve/15 px-3 py-1.5 rounded-full self-start">
+          <Calendar size={13} /> Adapté pour : {outfit.adaptedFor}
+        </span>
+      )}
+
       <div className="bg-pink/15 rounded-3xl p-4 shadow-sm">
         <div className="grid grid-cols-3 gap-2 mb-4">
           {outfit.itemIds.map((id) => (
@@ -1406,7 +1501,7 @@ function OutfitDetailScreen({ outfit, clothesById, isFavorite, onToggleFavorite,
   );
 }
 
-function WeekScreen({ week, outfits, clothesById, onPrepare, onOpenOutfit, onBack }) {
+function WeekScreen({ week, outfits, clothes, clothesById, events, onPrepare, onOpenOutfit, onAddEvent, onEditEvent, onBack }) {
   const [preparing, setPreparing] = useState(false);
 
   function handlePrepare() {
@@ -1423,31 +1518,58 @@ function WeekScreen({ week, outfits, clothesById, onPrepare, onOpenOutfit, onBac
 
       <div className="flex flex-col gap-3">
         {week.map((day) => {
-          const outfit = outfits.find((o) => o.id === day.outfitId);
+          const event = events.find((e) => e.day === day.day);
+          const outfit = event ? composeOutfitForDay(clothes, day.weather, event) : outfits.find((o) => o.id === day.outfitId);
           const Icon = WEATHER_ICONS[day.weather.condition] ?? Sun;
           return (
-            <div key={day.day} className="bg-pink/15 rounded-2xl p-4 shadow-sm flex items-center gap-3">
-              <div className="w-14 flex flex-col items-center shrink-0">
-                <span className="text-teal font-semibold text-sm">{day.day.slice(0, 3)}</span>
-                <div className="flex items-center gap-1 text-mauve mt-1">
-                  <Icon size={14} />
-                  <span className="text-xs">{day.weather.temp}°</span>
+            <div key={day.day} className="bg-pink/15 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-14 flex flex-col items-center shrink-0">
+                  <span className="text-teal font-semibold text-sm">{day.day.slice(0, 3)}</span>
+                  <div className="flex items-center gap-1 text-mauve mt-1">
+                    <Icon size={14} />
+                    <span className="text-xs">{day.weather.temp}°</span>
+                  </div>
                 </div>
+                {outfit ? (
+                  <button onClick={() => onOpenOutfit(outfit)} className="flex-1 flex items-center gap-2 min-w-0">
+                    <div className="flex -space-x-2">
+                      {outfit.itemIds.slice(0, 3).map((id) => (
+                        <ClothingThumb key={id} item={clothesById[id]} className="w-9 h-9 border-2 border-white" iconSize={14} />
+                      ))}
+                    </div>
+                    <div className="min-w-0 text-left">
+                      <p className="text-sm font-medium text-mauve truncate">{outfit.name}</p>
+                      {outfit.adaptedFor && (
+                        <p className="text-[10px] text-mauve/70 truncate">Adapté pour : {outfit.adaptedFor}</p>
+                      )}
+                    </div>
+                    <ChevronRight size={16} className="text-mauve ml-auto shrink-0" />
+                  </button>
+                ) : (
+                  <span className="flex-1 text-sm text-mauve/60 italic">Non planifiée</span>
+                )}
               </div>
-              {outfit ? (
-                <button onClick={() => onOpenOutfit(outfit.id)} className="flex-1 flex items-center gap-2 min-w-0">
-                  <div className="flex -space-x-2">
-                    {outfit.itemIds.slice(0, 3).map((id) => (
-                      <ClothingThumb key={id} item={clothesById[id]} className="w-9 h-9 border-2 border-white" iconSize={14} />
-                    ))}
+
+              {event ? (
+                <button
+                  onClick={() => onEditEvent(event)}
+                  className="flex items-center gap-2 bg-white/40 rounded-xl px-3 py-2 text-left"
+                >
+                  <Calendar size={14} className="text-mauve shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-teal truncate">{event.title}</p>
+                    <p className="text-[10px] text-mauve">{event.time}</p>
                   </div>
-                  <div className="min-w-0 text-left">
-                    <p className="text-sm font-medium text-mauve truncate">{outfit.name}</p>
-                  </div>
-                  <ChevronRight size={16} className="text-mauve ml-auto shrink-0" />
+                  <ChevronRight size={14} className="text-mauve shrink-0" />
                 </button>
               ) : (
-                <span className="flex-1 text-sm text-mauve/60 italic">Non planifiée</span>
+                <button
+                  onClick={() => onAddEvent(day.day)}
+                  className="flex items-center gap-1.5 text-xs text-mauve/70 font-medium self-start"
+                >
+                  <Plus size={12} /> Ajouter un événement
+                </button>
               )}
             </div>
           );
@@ -1471,6 +1593,7 @@ export default function AthenaStyle() {
   const [outfits, setOutfits] = useState(seedOutfits);
   const [favorites, setFavorites] = useState(['o3']);
   const [week, setWeek] = useState(initialWeek);
+  const [events, setEvents] = useState(seedEvents);
   const [messages, setMessages] = useState(seedMessages);
   const [tab, setTab] = useState('home');
   const [screen, setScreen] = useState({ name: 'main' });
@@ -1489,7 +1612,11 @@ export default function AthenaStyle() {
   });
 
   const clothesById = useMemo(() => Object.fromEntries(clothes.map((c) => [c.id, c])), [clothes]);
-  const todayOutfit = useMemo(() => generateOutfitForWeather(clothes, todayWeather), [clothes, todayWeather]);
+  const todayEvent = events.find((e) => e.day === week[0]?.day);
+  const todayOutfit = useMemo(
+    () => composeOutfitForDay(clothes, todayWeather, todayEvent),
+    [clothes, todayWeather, todayEvent],
+  );
   const outfitDetailOutfit =
     screen.name === 'outfit-detail' ? screen.outfit || outfits.find((o) => o.id === screen.outfitId) : null;
 
@@ -1578,11 +1705,24 @@ export default function AthenaStyle() {
   function prepareWeek() {
     setWeek((prev) =>
       prev.map((d, i) => {
-        if (d.outfitId) return d;
+        if (d.outfitId || events.some((e) => e.day === d.day)) return d;
         const match = outfits.find((o) => o.weather.condition === d.weather.condition) || outfits[i % outfits.length];
         return { ...d, outfitId: match.id };
       }),
     );
+  }
+
+  function addEvent(event) {
+    const id = `e${Date.now()}`;
+    setEvents((prev) => [...prev, { id, ...event }]);
+  }
+
+  function updateEvent(id, patch) {
+    setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  }
+
+  function deleteEvent(id) {
+    setEvents((prev) => prev.filter((e) => e.id !== id));
   }
 
   function sendMessage(text) {
@@ -1696,9 +1836,29 @@ export default function AthenaStyle() {
             <WeekScreen
               week={week}
               outfits={outfits}
+              clothes={clothes}
               clothesById={clothesById}
+              events={events}
               onPrepare={prepareWeek}
-              onOpenOutfit={(id) => openScreen('outfit-detail', { outfitId: id })}
+              onOpenOutfit={(outfit) => openScreen('outfit-detail', { outfitId: outfit.id, outfit })}
+              onAddEvent={(day) => openScreen('event-form', { day })}
+              onEditEvent={(event) => openScreen('event-form', { event, day: event.day })}
+              onBack={goBack}
+            />
+          )}
+          {screen.name === 'event-form' && (
+            <EventFormScreen
+              event={screen.event}
+              day={screen.day}
+              onSave={(e) => {
+                if (screen.event) updateEvent(screen.event.id, e);
+                else addEvent(e);
+                goBack();
+              }}
+              onDelete={(id) => {
+                deleteEvent(id);
+                goBack();
+              }}
               onBack={goBack}
             />
           )}
