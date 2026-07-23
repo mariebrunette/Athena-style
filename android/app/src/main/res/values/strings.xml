@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Athena Style</string>
+    <string name="title_activity_main">Athena Style</string>
+    <string name="package_name">com.mariebrunette.athenastyle</string>
+    <string name="custom_url_scheme">com.mariebrunette.athenastyle</string>
+</resources>

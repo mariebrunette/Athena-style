@@ -1738,7 +1738,7 @@ export default function AthenaStyle() {
 
   return (
     <div className="min-h-dvh w-full bg-neutral-950 flex items-center justify-center sm:p-6">
-      <div className="relative flex flex-col w-full h-dvh sm:w-[390px] sm:h-[844px] sm:max-h-[90vh] bg-cream text-teal overflow-hidden shadow-2xl sm:rounded-[3rem] sm:border-[10px] sm:border-neutral-950">
+      <div className="relative flex flex-col w-full h-dvh sm:w-[390px] sm:h-[844px] sm:max-h-[90vh] bg-cream text-teal overflow-hidden shadow-2xl sm:rounded-[3rem] sm:border-[10px] sm:border-neutral-950 pt-[env(safe-area-inset-top)]">
         <div className="flex-1 overflow-y-auto">
           {screen.name === 'main' && tab === 'home' && (
             <HomeScreen

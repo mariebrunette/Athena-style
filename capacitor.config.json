@@ -1,0 +1,13 @@
+{
+  "appId": "com.mariebrunette.athenastyle",
+  "appName": "Athena Style",
+  "webDir": "dist",
+  "backgroundColor": "#F6F3EC",
+  "android": {
+    "backgroundColor": "#F6F3EC"
+  },
+  "ios": {
+    "backgroundColor": "#F6F3EC",
+    "contentInset": "always"
+  }
+}
