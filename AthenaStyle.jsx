@@ -81,6 +81,90 @@ const MEASUREMENT_FIELDS = [
 
 const STYLE_OPTIONS = ['Casual', 'Chic', 'Bohème', 'Sportswear', 'Minimaliste'];
 
+const PRIVACY_CONTACT_EMAIL = 'marie.brunette35@gmail.com';
+
+const PRIVACY_SECTIONS = [
+  {
+    title: "1. Éditeur de l'application",
+    body: [
+      `Athena Style est développée et éditée par Marie Brunette (entreprise individuelle), joignable à l'adresse : ${PRIVACY_CONTACT_EMAIL}`,
+    ],
+  },
+  {
+    title: '2. Données que nous traitons',
+    subsections: [
+      {
+        title: '2.1 Photos de vêtements',
+        body: [
+          "Lorsque vous ajoutez un vêtement à votre dressing, l'application peut accéder à l'appareil photo ou à la galerie de votre téléphone pour capturer ou importer une image. Ces photos sont stockées localement sur votre appareil et ne sont pas transmises à nos serveurs ni à des tiers.",
+        ],
+      },
+      {
+        title: '2.2 Localisation',
+        body: [
+          "Avec votre autorisation, l'application utilise votre position approximative pour afficher la météo locale et adapter les suggestions de tenues. Cette donnée est transmise au service météo tiers Open-Meteo (voir section 4) uniquement pour obtenir les données météorologiques, et n'est pas conservée par nos soins.",
+        ],
+      },
+      {
+        title: '2.3 Informations de profil',
+        body: [
+          "Les informations que vous renseignez volontairement dans l'application (préférences de style, taille et mensurations, préférences météo) sont stockées localement sur votre appareil.",
+        ],
+      },
+      {
+        title: "2.4 Données d'usage",
+        body: [
+          "L'application peut enregistrer localement des statistiques d'utilisation de votre dressing (fréquence de port des vêtements) afin de vous fournir des suggestions personnalisées. Ces données restent sur votre appareil.",
+        ],
+      },
+    ],
+  },
+  {
+    title: '3. Ce que nous NE faisons PAS',
+    list: [
+      'Nous ne vendons pas vos données à des tiers.',
+      'Nous ne partageons pas vos photos de vêtements avec des tiers.',
+      "Nous n'utilisons pas vos données à des fins publicitaires.",
+      'Nous ne créons pas de profil publicitaire vous concernant.',
+    ],
+  },
+  {
+    title: '4. Services tiers',
+    body: [
+      "L'application utilise le service Open-Meteo pour récupérer les données météorologiques en fonction de votre position approximative. Consultez leur politique de confidentialité sur open-meteo.com pour en savoir plus sur le traitement de cette donnée par ce service tiers.",
+    ],
+  },
+  {
+    title: '5. Conservation des données',
+    body: [
+      "Les données de l'application (dressing, préférences, statistiques) sont actuellement stockées localement sur votre appareil. Si vous désinstallez l'application, ces données sont supprimées.",
+    ],
+  },
+  {
+    title: '6. Vos droits',
+    body: [
+      "Conformément au Règlement Général sur la Protection des Données (RGPD) pour les utilisateurs européens, vous disposez d'un droit d'accès, de rectification et de suppression de vos données. Étant donné que les données sont stockées localement sur votre appareil, vous pouvez les supprimer à tout moment en désinstallant l'application.",
+      `Pour toute question relative à vos données, vous pouvez nous contacter à : ${PRIVACY_CONTACT_EMAIL}`,
+    ],
+  },
+  {
+    title: '7. Confidentialité des mineurs',
+    body: [
+      "L'application n'est pas destinée aux enfants de moins de 13 ans, et nous ne collectons pas sciemment de données auprès d'eux.",
+    ],
+  },
+  {
+    title: '8. Modifications de cette politique',
+    body: [
+      "Cette politique de confidentialité peut être mise à jour à mesure que l'application évolue (par exemple, si nous ajoutons un système de compte ou de sauvegarde en ligne). Toute modification substantielle vous sera communiquée via l'application.",
+    ],
+  },
+  {
+    title: '9. Contact',
+    body: [`Pour toute question concernant cette politique de confidentialité, contactez-nous à : ${PRIVACY_CONTACT_EMAIL}`],
+  },
+];
+
 const WEATHER_SCENARIOS = [
   { id: 'doux', label: 'Doux', weather: { temp: 21, condition: 'soleil' } },
   { id: 'pluie', label: 'Pluie', weather: { temp: 15, condition: 'pluie' } },
@@ -1015,6 +1099,7 @@ function ProfileScreen({
   onOpenStylePrefs,
   onOpenStats,
   onLogoutClick,
+  onOpenPrivacy,
 }) {
   const weatherValue = weatherPrefs.city
     ? [weatherPrefs.city, SENSITIVITY_OPTIONS.find((o) => o.id === weatherPrefs.sensitivity)?.label]
@@ -1075,6 +1160,79 @@ function ProfileScreen({
       <button onClick={onLogoutClick} className="w-full text-mauve text-sm py-3 font-medium">
         Se déconnecter
       </button>
+
+      <button onClick={onOpenPrivacy} className="w-full text-mauve/50 text-xs pb-2 -mt-3">
+        Politique de confidentialité
+      </button>
+    </div>
+  );
+}
+
+function TextWithEmail({ text }) {
+  const parts = text.split(PRIVACY_CONTACT_EMAIL);
+  if (parts.length === 1) return text;
+  return (
+    <>
+      {parts[0]}
+      <a href={`mailto:${PRIVACY_CONTACT_EMAIL}`} className="text-mauve underline underline-offset-2">
+        {PRIVACY_CONTACT_EMAIL}
+      </a>
+      {parts[1]}
+    </>
+  );
+}
+
+function PrivacyScreen({ onBack }) {
+  return (
+    <div className="px-5 pt-6 pb-10 flex flex-col gap-5">
+      <ScreenHeader title="Politique de confidentialité" onBack={onBack} />
+
+      <div className="-mt-2">
+        <p className="text-xs text-mauve/70">Dernière mise à jour : 24 juillet 2026</p>
+        <p className="text-sm text-teal leading-relaxed mt-3">
+          Cette politique de confidentialité décrit comment l'application Athena Style (« l'application », « nous »)
+          traite les informations lorsque vous l'utilisez.
+        </p>
+      </div>
+
+      <div className="flex flex-col">
+        {PRIVACY_SECTIONS.map((section) => (
+          <div key={section.title} className="py-4 border-t border-bluegray/20 first:border-t-0 first:pt-0">
+            <h2 className="text-mauve font-semibold text-sm mb-2">{section.title}</h2>
+
+            {section.body?.map((paragraph, i) => (
+              <p key={i} className="text-sm text-teal leading-relaxed mb-2 last:mb-0">
+                <TextWithEmail text={paragraph} />
+              </p>
+            ))}
+
+            {section.list && (
+              <ul className="list-disc list-inside flex flex-col gap-1.5">
+                {section.list.map((item) => (
+                  <li key={item} className="text-sm text-teal leading-relaxed">
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {section.subsections && (
+              <div className="flex flex-col gap-4 mt-1">
+                {section.subsections.map((sub) => (
+                  <div key={sub.title}>
+                    <h3 className="text-teal font-semibold text-sm mb-1.5">{sub.title}</h3>
+                    {sub.body.map((paragraph, i) => (
+                      <p key={i} className="text-sm text-teal leading-relaxed">
+                        <TextWithEmail text={paragraph} />
+                      </p>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1596,7 +1754,9 @@ export default function AthenaStyle() {
   const [events, setEvents] = useState(seedEvents);
   const [messages, setMessages] = useState(seedMessages);
   const [tab, setTab] = useState('home');
-  const [screen, setScreen] = useState({ name: 'main' });
+  const [screen, setScreen] = useState(() =>
+    typeof window !== 'undefined' && window.location.pathname === '/privacy' ? { name: 'privacy' } : { name: 'main' },
+  );
   const [weatherPrefs, setWeatherPrefs] = useState({ city: 'Paris', sensitivity: null });
   const [measurements, setMeasurements] = useState({ height: '', chest: '', waist: '', shoeSize: '' });
   const [stylePrefs, setStylePrefs] = useState([]);
@@ -1659,11 +1819,27 @@ export default function AthenaStyle() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    function handlePopState() {
+      setScreen(window.location.pathname === '/privacy' ? { name: 'privacy' } : { name: 'main' });
+    }
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   function openScreen(name, params = {}) {
     setScreen({ name, ...params });
   }
 
+  function openPrivacy() {
+    window.history.pushState({}, '', '/privacy');
+    setScreen({ name: 'privacy' });
+  }
+
   function goBack() {
+    if (window.location.pathname === '/privacy') {
+      window.history.pushState({}, '', '/');
+    }
     setScreen({ name: 'main' });
   }
 
@@ -1789,9 +1965,11 @@ export default function AthenaStyle() {
               onOpenStylePrefs={() => openScreen('style-prefs')}
               onOpenStats={() => openScreen('stats')}
               onLogoutClick={() => setShowLogoutConfirm(true)}
+              onOpenPrivacy={openPrivacy}
             />
           )}
           {screen.name === 'stats' && <StatsScreen clothes={clothes} onBack={goBack} />}
+          {screen.name === 'privacy' && <PrivacyScreen onBack={goBack} />}
           {screen.name === 'add-item' && <AddItemScreen onBack={goBack} onSave={addClothing} />}
           {screen.name === 'weather-prefs' && (
             <WeatherPrefsScreen

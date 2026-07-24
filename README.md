@@ -44,7 +44,7 @@ npm run cap:sync
 
 ### Notes d'implémentation
 
-- **Pas de routeur** : l'app gère la navigation entre écrans via du state React (pas de `react-router`), donc aucune configuration de routing particulière n'est nécessaire pour Capacitor (pas de souci de chemins relatifs/`file://` à gérer).
+- **Pas de routeur** : l'app gère la navigation entre écrans via du state React (pas de `react-router`), donc aucune configuration de routing particulière n'est nécessaire pour Capacitor (pas de souci de chemins relatifs/`file://` à gérer). Seule exception : `/privacy` (politique de confidentialité) est géré par un routage minimal fait main (`window.location.pathname` + `history.pushState`/`popstate`), sans dépendance supplémentaire, pour avoir une URL publique dédiée (utile pour la soumission aux stores). En hébergement statique, le serveur doit servir `index.html` en fallback pour `/privacy` (règle de réécriture SPA classique, à configurer côté hébergeur).
 - **Zones sûres (notch, barre de statut, indicateur d'accueil)** : le viewport (`index.html`) utilise `viewport-fit=cover`, et l'app applique `env(safe-area-inset-*)` en CSS (haut du cadre, barre de navigation basse) pour ne jamais passer sous l'encoche ou la barre de gestes. `capacitor.config.json` active aussi `contentInset: "always"` côté iOS pour un rendu cohérent.
 - **Couleur de fond** : `backgroundColor` est réglé sur `#F6F3EC` (crème, charte graphique de l'app) dans `capacitor.config.json` pour éviter un flash blanc au lancement.
 - **Écran plein cadre sur mobile** : en dessous de 640px de large (tout appareil natif), l'app s'affiche en plein écran sans le cadre de téléphone décoratif (celui-ci n'apparaît qu'en aperçu desktop élargi).
