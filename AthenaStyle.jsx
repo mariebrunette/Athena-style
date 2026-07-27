@@ -1,10 +1,71 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useContext, createContext } from 'react';
 import {
   Home, Shirt, Sparkles, Heart, User, Plus, Camera, Upload, Check,
   ArrowLeft, Send, Calendar, Sun, CloudSun, Cloud, CloudRain, Wind,
   Footprints, Watch, ChevronRight, TrendingUp, Clock, Lightbulb,
-  Loader2, MapPin, RefreshCw,
+  Loader2, MapPin, RefreshCw, Trash2,
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { Preferences } from '@capacitor/preferences';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+
+const STORAGE_KEYS = {
+  clothes: 'athena.clothes',
+  outfits: 'athena.outfits',
+  favorites: 'athena.favorites',
+  week: 'athena.week',
+  events: 'athena.events',
+  weatherPrefs: 'athena.weatherPrefs',
+  measurements: 'athena.measurements',
+  stylePrefs: 'athena.stylePrefs',
+  notif: 'athena.notif',
+};
+
+// @capacitor/preferences utilise localStorage sous le capot dans un navigateur (aucun
+// code supplémentaire requis) : c'est ce qui fournit le fallback web demandé pendant le dev.
+async function loadJSON(key, fallback) {
+  const { value } = await Preferences.get({ key });
+  if (value == null) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJSON(key, value) {
+  Preferences.set({ key, value: JSON.stringify(value) });
+}
+
+// Écrit la photo sur le système de fichiers de l'appareil (@capacitor/filesystem, avec
+// son propre shim web basé sur IndexedDB en navigateur) et retourne un chemin — jamais
+// le base64 lui-même — à stocker dans les métadonnées du vêtement.
+async function savePhotoFile(dataUrl, fileName) {
+  const base64Data = dataUrl.split(',')[1] ?? dataUrl;
+  await Filesystem.writeFile({ path: fileName, data: base64Data, directory: Directory.Data });
+  return fileName;
+}
+
+async function resolvePhotoSrc(path) {
+  if (!path) return null;
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const { uri } = await Filesystem.getUri({ path, directory: Directory.Data });
+      return Capacitor.convertFileSrc(uri);
+    }
+    const { data } = await Filesystem.readFile({ path, directory: Directory.Data });
+    return `data:image/jpeg;base64,${data}`;
+  } catch {
+    return null;
+  }
+}
+
+async function deletePhotoFile(path) {
+  if (!path) return;
+  await Filesystem.deleteFile({ path, directory: Directory.Data }).catch(() => {});
+}
+
+const PhotoSrcContext = createContext({});
 
 const CATEGORIES = [
   { id: 'haut', label: 'Haut', icon: Shirt },
@@ -590,15 +651,17 @@ function ScreenHeader({ title, onBack }) {
 }
 
 function ClothingThumb({ item, className = 'w-14 h-14', iconSize = 22 }) {
+  const photoSrcMap = useContext(PhotoSrcContext);
+  const src = item?.photo ? photoSrcMap[item.photo] : null;
   const meta = CATEGORIES.find((c) => c.id === item?.category);
   const Icon = meta?.icon ?? Shirt;
   return (
     <div
       className={`rounded-xl overflow-hidden flex items-center justify-center shrink-0 ${className}`}
-      style={{ backgroundColor: item?.photo ? undefined : item?.color || '#AEC1C1' }}
+      style={{ backgroundColor: src ? undefined : item?.color || '#AEC1C1' }}
     >
-      {item?.photo ? (
-        <img src={item.photo} alt={item.name} className="w-full h-full object-cover" />
+      {src ? (
+        <img src={src} alt={item.name} className="w-full h-full object-cover" />
       ) : (
         <Icon size={iconSize} className="text-white" />
       )}
@@ -1100,6 +1163,7 @@ function ProfileScreen({
   onOpenStats,
   onLogoutClick,
   onOpenPrivacy,
+  onClearDataClick,
 }) {
   const weatherValue = weatherPrefs.city
     ? [weatherPrefs.city, SENSITIVITY_OPTIONS.find((o) => o.id === weatherPrefs.sensitivity)?.label]
@@ -1161,7 +1225,14 @@ function ProfileScreen({
         Se déconnecter
       </button>
 
-      <button onClick={onOpenPrivacy} className="w-full text-mauve/50 text-xs pb-2 -mt-3">
+      <button
+        onClick={onClearDataClick}
+        className="w-full flex items-center justify-center gap-1.5 text-mauve/70 text-xs font-medium py-1"
+      >
+        <Trash2 size={13} /> Effacer mes données
+      </button>
+
+      <button onClick={onOpenPrivacy} className="w-full text-mauve/50 text-xs pb-2">
         Politique de confidentialité
       </button>
     </div>
@@ -1762,6 +1833,9 @@ export default function AthenaStyle() {
   const [stylePrefs, setStylePrefs] = useState([]);
   const [notif, setNotif] = useState(true);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showClearDataConfirm, setShowClearDataConfirm] = useState(false);
+  const [appReady, setAppReady] = useState(false);
+  const [photoSrcMap, setPhotoSrcMap] = useState({});
   const [todayWeather, setTodayWeather] = useState({ temp: 18, condition: 'nuageux' });
   const [weatherMeta, setWeatherMeta] = useState({
     loading: true,
@@ -1770,6 +1844,94 @@ export default function AthenaStyle() {
     tempMax: null,
     tempMin: null,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAll() {
+      const [
+        loadedClothes,
+        loadedOutfits,
+        loadedFavorites,
+        loadedWeek,
+        loadedEvents,
+        loadedWeatherPrefs,
+        loadedMeasurements,
+        loadedStylePrefs,
+        loadedNotif,
+      ] = await Promise.all([
+        loadJSON(STORAGE_KEYS.clothes, seedClothes),
+        loadJSON(STORAGE_KEYS.outfits, seedOutfits),
+        loadJSON(STORAGE_KEYS.favorites, ['o3']),
+        loadJSON(STORAGE_KEYS.week, initialWeek),
+        loadJSON(STORAGE_KEYS.events, seedEvents),
+        loadJSON(STORAGE_KEYS.weatherPrefs, { city: 'Paris', sensitivity: null }),
+        loadJSON(STORAGE_KEYS.measurements, { height: '', chest: '', waist: '', shoeSize: '' }),
+        loadJSON(STORAGE_KEYS.stylePrefs, []),
+        loadJSON(STORAGE_KEYS.notif, true),
+      ]);
+
+      const photoEntries = await Promise.all(
+        loadedClothes
+          .filter((c) => c.photo)
+          .map(async (c) => [c.photo, await resolvePhotoSrc(c.photo)]),
+      );
+
+      if (cancelled) return;
+      setClothes(loadedClothes);
+      setOutfits(loadedOutfits);
+      setFavorites(loadedFavorites);
+      setWeek(loadedWeek);
+      setEvents(loadedEvents);
+      setWeatherPrefs(loadedWeatherPrefs);
+      setMeasurements(loadedMeasurements);
+      setStylePrefs(loadedStylePrefs);
+      setNotif(loadedNotif);
+      setPhotoSrcMap(Object.fromEntries(photoEntries));
+      setAppReady(true);
+    }
+
+    loadAll();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (appReady) saveJSON(STORAGE_KEYS.clothes, clothes);
+  }, [clothes, appReady]);
+
+  useEffect(() => {
+    if (appReady) saveJSON(STORAGE_KEYS.outfits, outfits);
+  }, [outfits, appReady]);
+
+  useEffect(() => {
+    if (appReady) saveJSON(STORAGE_KEYS.favorites, favorites);
+  }, [favorites, appReady]);
+
+  useEffect(() => {
+    if (appReady) saveJSON(STORAGE_KEYS.week, week);
+  }, [week, appReady]);
+
+  useEffect(() => {
+    if (appReady) saveJSON(STORAGE_KEYS.events, events);
+  }, [events, appReady]);
+
+  useEffect(() => {
+    if (appReady) saveJSON(STORAGE_KEYS.weatherPrefs, weatherPrefs);
+  }, [weatherPrefs, appReady]);
+
+  useEffect(() => {
+    if (appReady) saveJSON(STORAGE_KEYS.measurements, measurements);
+  }, [measurements, appReady]);
+
+  useEffect(() => {
+    if (appReady) saveJSON(STORAGE_KEYS.stylePrefs, stylePrefs);
+  }, [stylePrefs, appReady]);
+
+  useEffect(() => {
+    if (appReady) saveJSON(STORAGE_KEYS.notif, notif);
+  }, [notif, appReady]);
 
   const clothesById = useMemo(() => Object.fromEntries(clothes.map((c) => [c.id, c])), [clothes]);
   const todayEvent = events.find((e) => e.day === week[0]?.day);
@@ -1848,11 +2010,16 @@ export default function AthenaStyle() {
     setScreen({ name: 'main' });
   }
 
-  function addClothing(item) {
+  async function addClothing(item) {
     const id = `c${Date.now()}`;
+    let photoPath = null;
+    if (item.photo) {
+      photoPath = await savePhotoFile(item.photo, `${id}.jpg`);
+      setPhotoSrcMap((prev) => ({ ...prev, [photoPath]: item.photo }));
+    }
     setClothes((prev) => [
       ...prev,
-      { id, laundry: false, wearCount: 0, monthsSinceWorn: null, warmth: 'leger', ...item },
+      { id, laundry: false, wearCount: 0, monthsSinceWorn: null, warmth: 'leger', ...item, photo: photoPath },
     ]);
     setTab('dressing');
     setScreen({ name: 'main' });
@@ -1860,6 +2027,24 @@ export default function AthenaStyle() {
 
   function toggleLaundry(clothingId) {
     setClothes((prev) => prev.map((c) => (c.id === clothingId ? { ...c, laundry: !c.laundry } : c)));
+  }
+
+  async function clearAllData() {
+    await Promise.all(clothes.filter((c) => c.photo).map((c) => deletePhotoFile(c.photo)));
+    await Promise.all(Object.values(STORAGE_KEYS).map((key) => Preferences.remove({ key })));
+    setClothes(seedClothes);
+    setOutfits(seedOutfits);
+    setFavorites(['o3']);
+    setWeek(initialWeek);
+    setEvents(seedEvents);
+    setWeatherPrefs({ city: 'Paris', sensitivity: null });
+    setMeasurements({ height: '', chest: '', waist: '', shoeSize: '' });
+    setStylePrefs([]);
+    setNotif(true);
+    setPhotoSrcMap({});
+    setShowClearDataConfirm(false);
+    setTab('home');
+    setScreen({ name: 'main' });
   }
 
   function toggleFavorite(outfitId) {
@@ -1912,157 +2097,184 @@ export default function AthenaStyle() {
 
   const showFab = screen.name === 'main' && tab === 'dressing';
 
+  if (!appReady) {
+    return (
+      <div className="min-h-dvh w-full bg-neutral-950 flex items-center justify-center sm:p-6">
+        <div className="relative flex flex-col items-center justify-center gap-4 w-full h-dvh sm:w-[390px] sm:h-[844px] sm:max-h-[90vh] bg-cream overflow-hidden shadow-2xl sm:rounded-[3rem] sm:border-[10px] sm:border-neutral-950 pt-[env(safe-area-inset-top)]">
+          <div className="w-16 h-16 rounded-full bg-mauve flex items-center justify-center text-cream">
+            <Sparkles size={28} />
+          </div>
+          <Loader2 size={22} className="animate-spin text-mauve" />
+          <p className="text-mauve text-sm font-medium">Chargement de ton dressing...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-dvh w-full bg-neutral-950 flex items-center justify-center sm:p-6">
-      <div className="relative flex flex-col w-full h-dvh sm:w-[390px] sm:h-[844px] sm:max-h-[90vh] bg-cream text-teal overflow-hidden shadow-2xl sm:rounded-[3rem] sm:border-[10px] sm:border-neutral-950 pt-[env(safe-area-inset-top)]">
-        <div className="flex-1 overflow-y-auto">
-          {screen.name === 'main' && tab === 'home' && (
-            <HomeScreen
-              weather={todayWeather}
-              weatherMeta={weatherMeta}
-              onRefreshWeather={refreshWeather}
-              onChangeWeather={setTodayWeather}
-              todayOutfit={todayOutfit}
-              clothesById={clothesById}
-              clothes={clothes}
-              onOpenOutfit={() => openScreen('outfit-detail', { outfitId: todayOutfit.id, outfit: todayOutfit })}
-              onOpenWeek={() => openScreen('week-plan')}
-              onOpenAdd={() => openScreen('add-item')}
+    <PhotoSrcContext.Provider value={photoSrcMap}>
+      <div className="min-h-dvh w-full bg-neutral-950 flex items-center justify-center sm:p-6">
+        <div className="relative flex flex-col w-full h-dvh sm:w-[390px] sm:h-[844px] sm:max-h-[90vh] bg-cream text-teal overflow-hidden shadow-2xl sm:rounded-[3rem] sm:border-[10px] sm:border-neutral-950 pt-[env(safe-area-inset-top)]">
+          <div className="flex-1 overflow-y-auto">
+            {screen.name === 'main' && tab === 'home' && (
+              <HomeScreen
+                weather={todayWeather}
+                weatherMeta={weatherMeta}
+                onRefreshWeather={refreshWeather}
+                onChangeWeather={setTodayWeather}
+                todayOutfit={todayOutfit}
+                clothesById={clothesById}
+                clothes={clothes}
+                onOpenOutfit={() => openScreen('outfit-detail', { outfitId: todayOutfit.id, outfit: todayOutfit })}
+                onOpenWeek={() => openScreen('week-plan')}
+                onOpenAdd={() => openScreen('add-item')}
+              />
+            )}
+            {screen.name === 'main' && tab === 'dressing' && (
+              <DressingScreen clothes={clothes} onToggleLaundry={toggleLaundry} />
+            )}
+            {screen.name === 'main' && tab === 'ai' && (
+              <ChatScreen
+                messages={messages}
+                onSend={sendMessage}
+                clothesById={clothesById}
+                onOpenOutfit={(outfit) => openScreen('outfit-detail', { outfitId: outfit.id, outfit })}
+              />
+            )}
+            {screen.name === 'main' && tab === 'favorites' && (
+              <FavoritesScreen
+                outfits={outfits}
+                favorites={favorites}
+                clothesById={clothesById}
+                onOpen={(id) => openScreen('outfit-detail', { outfitId: id })}
+                onToggleFavorite={toggleFavorite}
+              />
+            )}
+            {screen.name === 'main' && tab === 'profile' && (
+              <ProfileScreen
+                clothes={clothes}
+                outfits={outfits}
+                favorites={favorites}
+                weatherPrefs={weatherPrefs}
+                measurements={measurements}
+                stylePrefs={stylePrefs}
+                notif={notif}
+                onToggleNotif={setNotif}
+                onOpenWeatherPrefs={() => openScreen('weather-prefs')}
+                onOpenMeasurements={() => openScreen('measurements')}
+                onOpenStylePrefs={() => openScreen('style-prefs')}
+                onOpenStats={() => openScreen('stats')}
+                onLogoutClick={() => setShowLogoutConfirm(true)}
+                onOpenPrivacy={openPrivacy}
+                onClearDataClick={() => setShowClearDataConfirm(true)}
+              />
+            )}
+            {screen.name === 'stats' && <StatsScreen clothes={clothes} onBack={goBack} />}
+            {screen.name === 'privacy' && <PrivacyScreen onBack={goBack} />}
+            {screen.name === 'add-item' && <AddItemScreen onBack={goBack} onSave={addClothing} />}
+            {screen.name === 'weather-prefs' && (
+              <WeatherPrefsScreen
+                prefs={weatherPrefs}
+                onSave={(p) => {
+                  setWeatherPrefs(p);
+                  goBack();
+                }}
+                onBack={goBack}
+              />
+            )}
+            {screen.name === 'measurements' && (
+              <MeasurementsScreen
+                measurements={measurements}
+                onSave={(m) => {
+                  setMeasurements(m);
+                  goBack();
+                }}
+                onBack={goBack}
+              />
+            )}
+            {screen.name === 'style-prefs' && (
+              <StylePrefsScreen
+                selected={stylePrefs}
+                onSave={(s) => {
+                  setStylePrefs(s);
+                  goBack();
+                }}
+                onBack={goBack}
+              />
+            )}
+            {screen.name === 'outfit-detail' && (
+              <OutfitDetailScreen
+                outfit={outfitDetailOutfit}
+                clothesById={clothesById}
+                isFavorite={outfitDetailOutfit ? favorites.includes(outfitDetailOutfit.id) : false}
+                onToggleFavorite={() => outfitDetailOutfit && handleOutfitSave(outfitDetailOutfit)}
+                onBack={goBack}
+              />
+            )}
+            {screen.name === 'week-plan' && (
+              <WeekScreen
+                week={week}
+                outfits={outfits}
+                clothes={clothes}
+                clothesById={clothesById}
+                events={events}
+                onPrepare={prepareWeek}
+                onOpenOutfit={(outfit) => openScreen('outfit-detail', { outfitId: outfit.id, outfit })}
+                onAddEvent={(day) => openScreen('event-form', { day })}
+                onEditEvent={(event) => openScreen('event-form', { event, day: event.day })}
+                onBack={goBack}
+              />
+            )}
+            {screen.name === 'event-form' && (
+              <EventFormScreen
+                event={screen.event}
+                day={screen.day}
+                onSave={(e) => {
+                  if (screen.event) updateEvent(screen.event.id, e);
+                  else addEvent(e);
+                  goBack();
+                }}
+                onDelete={(id) => {
+                  deleteEvent(id);
+                  goBack();
+                }}
+                onBack={goBack}
+              />
+            )}
+          </div>
+
+          {showFab && (
+            <button
+              onClick={() => openScreen('add-item')}
+              className="absolute right-5 bottom-24 w-14 h-14 rounded-full bg-mauve text-cream shadow-lg flex items-center justify-center active:scale-95 transition z-20"
+            >
+              <Plus size={24} />
+            </button>
+          )}
+
+          <BottomNav active={tab} onChange={switchTab} />
+
+          {showLogoutConfirm && (
+            <ConfirmDialog
+              title="Déconnexion"
+              message="Voulez-vous vraiment vous déconnecter ?"
+              confirmLabel="Confirmer"
+              onCancel={() => setShowLogoutConfirm(false)}
+              onConfirm={() => setShowLogoutConfirm(false)}
             />
           )}
-          {screen.name === 'main' && tab === 'dressing' && (
-            <DressingScreen clothes={clothes} onToggleLaundry={toggleLaundry} />
-          )}
-          {screen.name === 'main' && tab === 'ai' && (
-            <ChatScreen
-              messages={messages}
-              onSend={sendMessage}
-              clothesById={clothesById}
-              onOpenOutfit={(outfit) => openScreen('outfit-detail', { outfitId: outfit.id, outfit })}
-            />
-          )}
-          {screen.name === 'main' && tab === 'favorites' && (
-            <FavoritesScreen
-              outfits={outfits}
-              favorites={favorites}
-              clothesById={clothesById}
-              onOpen={(id) => openScreen('outfit-detail', { outfitId: id })}
-              onToggleFavorite={toggleFavorite}
-            />
-          )}
-          {screen.name === 'main' && tab === 'profile' && (
-            <ProfileScreen
-              clothes={clothes}
-              outfits={outfits}
-              favorites={favorites}
-              weatherPrefs={weatherPrefs}
-              measurements={measurements}
-              stylePrefs={stylePrefs}
-              notif={notif}
-              onToggleNotif={setNotif}
-              onOpenWeatherPrefs={() => openScreen('weather-prefs')}
-              onOpenMeasurements={() => openScreen('measurements')}
-              onOpenStylePrefs={() => openScreen('style-prefs')}
-              onOpenStats={() => openScreen('stats')}
-              onLogoutClick={() => setShowLogoutConfirm(true)}
-              onOpenPrivacy={openPrivacy}
-            />
-          )}
-          {screen.name === 'stats' && <StatsScreen clothes={clothes} onBack={goBack} />}
-          {screen.name === 'privacy' && <PrivacyScreen onBack={goBack} />}
-          {screen.name === 'add-item' && <AddItemScreen onBack={goBack} onSave={addClothing} />}
-          {screen.name === 'weather-prefs' && (
-            <WeatherPrefsScreen
-              prefs={weatherPrefs}
-              onSave={(p) => {
-                setWeatherPrefs(p);
-                goBack();
-              }}
-              onBack={goBack}
-            />
-          )}
-          {screen.name === 'measurements' && (
-            <MeasurementsScreen
-              measurements={measurements}
-              onSave={(m) => {
-                setMeasurements(m);
-                goBack();
-              }}
-              onBack={goBack}
-            />
-          )}
-          {screen.name === 'style-prefs' && (
-            <StylePrefsScreen
-              selected={stylePrefs}
-              onSave={(s) => {
-                setStylePrefs(s);
-                goBack();
-              }}
-              onBack={goBack}
-            />
-          )}
-          {screen.name === 'outfit-detail' && (
-            <OutfitDetailScreen
-              outfit={outfitDetailOutfit}
-              clothesById={clothesById}
-              isFavorite={outfitDetailOutfit ? favorites.includes(outfitDetailOutfit.id) : false}
-              onToggleFavorite={() => outfitDetailOutfit && handleOutfitSave(outfitDetailOutfit)}
-              onBack={goBack}
-            />
-          )}
-          {screen.name === 'week-plan' && (
-            <WeekScreen
-              week={week}
-              outfits={outfits}
-              clothes={clothes}
-              clothesById={clothesById}
-              events={events}
-              onPrepare={prepareWeek}
-              onOpenOutfit={(outfit) => openScreen('outfit-detail', { outfitId: outfit.id, outfit })}
-              onAddEvent={(day) => openScreen('event-form', { day })}
-              onEditEvent={(event) => openScreen('event-form', { event, day: event.day })}
-              onBack={goBack}
-            />
-          )}
-          {screen.name === 'event-form' && (
-            <EventFormScreen
-              event={screen.event}
-              day={screen.day}
-              onSave={(e) => {
-                if (screen.event) updateEvent(screen.event.id, e);
-                else addEvent(e);
-                goBack();
-              }}
-              onDelete={(id) => {
-                deleteEvent(id);
-                goBack();
-              }}
-              onBack={goBack}
+
+          {showClearDataConfirm && (
+            <ConfirmDialog
+              title="Effacer mes données"
+              message="Ton dressing, tes favoris, ton agenda et tes préférences seront définitivement supprimés de cet appareil. Cette action est irréversible."
+              confirmLabel="Effacer"
+              onCancel={() => setShowClearDataConfirm(false)}
+              onConfirm={clearAllData}
             />
           )}
         </div>
-
-        {showFab && (
-          <button
-            onClick={() => openScreen('add-item')}
-            className="absolute right-5 bottom-24 w-14 h-14 rounded-full bg-mauve text-cream shadow-lg flex items-center justify-center active:scale-95 transition z-20"
-          >
-            <Plus size={24} />
-          </button>
-        )}
-
-        <BottomNav active={tab} onChange={switchTab} />
-
-        {showLogoutConfirm && (
-          <ConfirmDialog
-            title="Déconnexion"
-            message="Voulez-vous vraiment vous déconnecter ?"
-            confirmLabel="Confirmer"
-            onCancel={() => setShowLogoutConfirm(false)}
-            onConfirm={() => setShowLogoutConfirm(false)}
-          />
-        )}
       </div>
-    </div>
+    </PhotoSrcContext.Provider>
   );
 }

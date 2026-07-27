@@ -42,6 +42,16 @@ npm run cap:sync
 
 À lancer après chaque changement du code web (nouveau composant, dépendance, etc.) pour que les projets natifs reflètent le dernier build.
 
+## Persistance des données
+
+Toutes les données utilisateur (dressing, favoris, agenda, préférences de profil, statistiques de port) sont sauvegardées sur l'appareil et rechargées automatiquement au lancement — rien n'est perdu à la fermeture de l'app.
+
+- **Métadonnées** (vêtements, favoris, événements, préférences météo/mensurations/style, notifications) : [`@capacitor/preferences`](https://capacitorjs.com/docs/apis/preferences), un stockage clé-valeur simple. En navigateur (dev), ce plugin utilise `localStorage` en interne — aucun code séparé n'est nécessaire pour le fallback web, c'est le comportement natif du plugin.
+- **Photos de vêtements** : écrites sur le système de fichiers de l'appareil via [`@capacitor/filesystem`](https://capacitorjs.com/docs/apis/filesystem) (répertoire `Directory.Data`). Seul le **chemin du fichier** est stocké dans les métadonnées du vêtement (jamais le base64) ; l'image affichée est résolue à la volée (`Capacitor.convertFileSrc` en natif, relecture du fichier en base64 via `Filesystem.readFile` en fallback web) et mise en cache en mémoire (`PhotoSrcContext`).
+- **Chargement au lancement** : un écran de chargement s'affiche pendant que toutes les données sont relues depuis le stockage (et que les photos sont résolues) ; les écrans normaux ne s'affichent qu'une fois ce chargement terminé.
+- **Effacer mes données** (Profil) : supprime les fichiers photo, vide les clés Preferences, et réinitialise l'app à son état de démonstration initial — testé pour survivre à un rechargement complet (pas seulement une réinitialisation en mémoire).
+- Non persisté (volontairement) : l'historique du chat Athena, la météo en temps réel (rechargée à chaque lancement), et l'état d'affichage courant (onglet actif, écran ouvert).
+
 ### Notes d'implémentation
 
 - **Pas de routeur** : l'app gère la navigation entre écrans via du state React (pas de `react-router`), donc aucune configuration de routing particulière n'est nécessaire pour Capacitor (pas de souci de chemins relatifs/`file://` à gérer). Seule exception : `/privacy` (politique de confidentialité) est géré par un routage minimal fait main (`window.location.pathname` + `history.pushState`/`popstate`), sans dépendance supplémentaire, pour avoir une URL publique dédiée (utile pour la soumission aux stores). En hébergement statique, le serveur doit servir `index.html` en fallback pour `/privacy` (règle de réécriture SPA classique, à configurer côté hébergeur).
