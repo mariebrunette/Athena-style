@@ -246,23 +246,54 @@ function mapWeatherCode(code, windSpeed) {
   return 'nuageux';
 }
 
-function getBrowserLocation(timeoutMs = 6000) {
+// Timeout garanti côté JS : certaines WebViews (notamment iOS sans clé Info.plist, voir
+// NSLocationWhenInUseUsageDescription) n'invoquent jamais le callback d'erreur et ignorent
+// l'option `timeout` native de l'API — on ne peut donc pas compter dessus seule.
+function getBrowserLocation(timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       reject(new Error('Géolocalisation non disponible'));
       return;
     }
+
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Délai de géolocalisation dépassé'));
+    }, timeoutMs);
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-      (err) => reject(err),
+      (pos) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+      },
+      (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      },
       { timeout: timeoutMs, maximumAge: 10 * 60 * 1000 },
     );
   });
 }
 
+async function fetchWithTimeout(url, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function geocodeCity(cityName) {
   const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=fr&format=json`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) throw new Error('Géocodage indisponible');
   const data = await res.json();
   const match = data?.results?.[0];
@@ -272,7 +303,7 @@ async function geocodeCity(cityName) {
 
 async function fetchWeatherForLocation({ latitude, longitude }) {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) throw new Error('Météo indisponible');
   const data = await res.json();
   return {
@@ -1957,6 +1988,11 @@ export default function AthenaStyle() {
     if (!location) {
       location = DEFAULT_LOCATION;
     }
+
+    // Fixe le nom de ville dès que la localisation est résolue : même si la requête météo
+    // échoue ensuite, l'écran ne doit jamais rester bloqué sur "..." indéfiniment.
+    setWeatherMeta((m) => ({ ...m, location: location.name }));
+
     try {
       const data = await fetchWeatherForLocation(location);
       setTodayWeather({ temp: data.temp, condition: data.condition });
@@ -1971,6 +2007,7 @@ export default function AthenaStyle() {
       setWeatherMeta((m) => ({
         ...m,
         loading: false,
+        location: location.name,
         error: 'Météo indisponible pour le moment, données par défaut utilisées.',
       }));
     }
