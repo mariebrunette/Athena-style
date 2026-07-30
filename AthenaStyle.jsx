@@ -85,22 +85,61 @@ const PLACEHOLDER_COLORS = {
   accessoire: '#8B5E3C',
 };
 
-const AI_DETECTION_SAMPLES = [
-  { name: 'Chemise à rayures', category: 'haut', color: '#EDEAE2', colorFamily: 'blanc', warmth: 'leger' },
-  { name: 'Pull en maille', category: 'haut', color: '#957882', colorFamily: 'rose', warmth: 'chaud' },
-  { name: 'Jean slim', category: 'bas', color: '#3E4A5C', colorFamily: 'bleu', warmth: 'chaud' },
-  { name: 'Pantalon fluide', category: 'bas', color: '#335056', colorFamily: 'bleu', warmth: 'leger' },
-  { name: 'Robe portefeuille', category: 'robe', color: '#E3CCCA', colorFamily: 'rose', warmth: 'leger' },
-  { name: 'Blazer structuré', category: 'veste', color: '#AEC1C1', colorFamily: 'bleu', warmth: 'leger' },
-  { name: 'Manteau long', category: 'veste', color: '#8B5E3C', colorFamily: 'marron', warmth: 'chaud' },
-  { name: 'Baskets running', category: 'chaussures', color: '#F2F2F2', colorFamily: 'blanc', warmth: 'leger' },
-  { name: 'Bottines en cuir', category: 'chaussures', color: '#3E2723', colorFamily: 'noir', warmth: 'chaud' },
-  { name: 'Sac bandoulière', category: 'accessoire', color: '#C9B79C', colorFamily: 'beige', warmth: 'leger' },
-  { name: 'Ceinture en cuir', category: 'accessoire', color: '#8B5E3C', colorFamily: 'marron', warmth: 'leger' },
-];
+// Redimensionne et compresse la photo côté client (~1000px de large max, JPEG) avant
+// tout envoi réseau, pour réduire le coût et le temps de réponse de l'analyse IA, et
+// alléger ce qui est ensuite écrit sur le système de fichiers de l'appareil.
+function compressImage(dataUrl, maxWidth = 1000, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error("Impossible de lire l'image."));
+    img.src = dataUrl;
+  });
+}
 
-function detectClothingFromPhoto() {
-  return AI_DETECTION_SAMPLES[Math.floor(Math.random() * AI_DETECTION_SAMPLES.length)];
+// Appelle la fonction serverless /api/analyze-clothing (jamais l'API Anthropic
+// directement depuis le client, pour ne jamais exposer la clé API). Timeout garanti en
+// JS pour ne jamais bloquer l'écran si le réseau ou le service est indisponible — voir
+// le repli manuel dans AddItemScreen.
+// En app native (Capacitor), le WebView tourne sur sa propre origine locale
+// (capacitor://localhost) — un fetch relatif n'atteindrait jamais la fonction
+// serverless déployée sur Vercel. VITE_API_BASE_URL permet de pointer vers le
+// déploiement au build ; vide par défaut (chemin relatif, correct pour le web).
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+async function analyzeClothingPhoto(dataUrl, timeoutMs = 15000) {
+  const [prefix, base64] = dataUrl.split(',');
+  const mediaType = prefix?.match(/data:(.*);base64/)?.[1] || 'image/jpeg';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/analyze-clothing`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ image: base64, mediaType }),
+      signal: controller.signal,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(body.error || 'Analyse indisponible.');
+    }
+    return body;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const WEATHER_ICONS = {
@@ -1559,8 +1598,11 @@ function AddItemScreen({ onBack, onSave }) {
   const [color, setColor] = useState(undefined);
   const [colorFamily, setColorFamily] = useState(undefined);
   const [warmth, setWarmth] = useState('leger');
+  const [material, setMaterial] = useState(undefined);
+  const [season, setSeason] = useState(undefined);
   const [detecting, setDetecting] = useState(false);
   const [autoDetected, setAutoDetected] = useState(false);
+  const [detectionError, setDetectionError] = useState(null);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
@@ -1568,20 +1610,33 @@ function AddItemScreen({ onBack, onSave }) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      setPhoto(reader.result);
+    reader.onload = async () => {
+      let compressed;
+      try {
+        compressed = await compressImage(reader.result);
+      } catch {
+        compressed = reader.result;
+      }
+      setPhoto(compressed);
       setAutoDetected(false);
+      setDetectionError(null);
       setDetecting(true);
-      setTimeout(() => {
-        const detected = detectClothingFromPhoto();
-        setName(detected.name);
-        setCategory(detected.category);
+
+      try {
+        const detected = await analyzeClothingPhoto(compressed);
+        setName(detected.name || '');
+        setCategory(CATEGORIES.some((c) => c.id === detected.category) ? detected.category : null);
         setColor(detected.color);
         setColorFamily(detected.colorFamily);
-        setWarmth(detected.warmth);
-        setDetecting(false);
+        setWarmth(detected.warmth === 'chaud' ? 'chaud' : 'leger');
+        setMaterial(detected.material);
+        setSeason(detected.season);
         setAutoDetected(true);
-      }, 1200 + Math.random() * 800);
+      } catch {
+        setDetectionError("L'analyse automatique n'a pas fonctionné, renseigne les informations ci-dessous.");
+      } finally {
+        setDetecting(false);
+      }
     };
     reader.readAsDataURL(file);
   }
@@ -1595,6 +1650,8 @@ function AddItemScreen({ onBack, onSave }) {
       color: color ?? (photo ? undefined : PLACEHOLDER_COLORS[category]),
       colorFamily,
       warmth,
+      material,
+      season,
     });
   }
 
@@ -1649,6 +1706,12 @@ function AddItemScreen({ onBack, onSave }) {
       {autoDetected && (
         <p className="text-xs text-mauve flex items-center gap-1.5 -mt-3 px-1">
           <Sparkles size={12} className="shrink-0" /> Détecté automatiquement, tu peux ajuster si besoin
+        </p>
+      )}
+
+      {detectionError && (
+        <p className="text-xs text-mauve/70 flex items-center gap-1.5 -mt-3 px-1">
+          <Sparkles size={12} className="shrink-0" /> {detectionError}
         </p>
       )}
 

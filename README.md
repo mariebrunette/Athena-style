@@ -42,6 +42,35 @@ npm run cap:sync
 
 À lancer après chaque changement du code web (nouveau composant, dépendance, etc.) pour que les projets natifs reflètent le dernier build.
 
+## Reconnaissance photo IA (Claude Vision)
+
+Sur l'écran "Ajouter un vêtement", après capture/import d'une photo, l'app appelle une fonction serverless Vercel qui interroge l'API Claude (vision) pour pré-remplir automatiquement nom, catégorie, couleur, matière et saison. **La clé API Anthropic ne quitte jamais le serveur** : elle est lue côté fonction serverless depuis `process.env.ANTHROPIC_API_KEY`, jamais présente dans le code client ni dans le bundle livré au navigateur/à l'app.
+
+### Déploiement Vercel
+
+1. **Connecte le dépôt** sur [vercel.com](https://vercel.com) (New Project → importe ce repo). Vercel détecte automatiquement Vite ; `vercel.json` précise déjà `buildCommand`/`outputDirectory` par sécurité.
+2. **Renseigne la clé API** : Project Settings → Environment Variables → ajoute `ANTHROPIC_API_KEY` avec ta clé (console Anthropic), pour les environnements Production **et** Preview. Ne la mets jamais dans un fichier committé — un `.env.local` pour tester en local est ignoré par git (`.gitignore`).
+3. **Déploie** (`git push` déclenche un déploiement automatique une fois le projet lié, ou `npx vercel --prod` en CLI).
+4. **Tester en local** avec les vraies fonctions serverless : `npx vercel dev` (nécessite `npx vercel login` une première fois) sert le front ET `/api/analyze-clothing` sur le même port. `npm run dev` (Vite seul) ne sait pas servir `/api` : l'appel échoue proprement et l'app bascule sur la saisie manuelle — pratique pour développer l'UI sans consommer de quota API.
+
+### Utilisation depuis l'app native (Capacitor)
+
+L'app native embarque son propre build web local (WebView sur `capacitor://localhost` en iOS, `https://localhost` en Android) : un appel `fetch('/api/...')` relatif n'atteindrait jamais la fonction déployée sur Vercel. Pour que la reconnaissance photo fonctionne dans les apps iOS/Android, définis `VITE_API_BASE_URL` avec l'URL de ton déploiement Vercel **avant** de builder pour Capacitor :
+
+```bash
+VITE_API_BASE_URL=https://ton-projet.vercel.app npm run cap:sync
+```
+
+Sans cette variable (valeur par défaut vide), l'app utilise un chemin relatif — correct uniquement quand l'app elle-même est servie depuis le même domaine Vercel (ex: test dans un navigateur mobile pointé sur l'URL Vercel). La fonction serverless renvoie déjà les en-têtes CORS nécessaires pour accepter les appels cross-origin depuis l'app native.
+
+### Repli si l'analyse échoue
+
+Réseau coupé, quota Anthropic dépassé, fonction non déployée : l'appel échoue proprement (timeout 15s inclus), un message discret s'affiche ("L'analyse automatique n'a pas fonctionné, renseigne les informations ci-dessous"), et le formulaire reste pleinement utilisable en saisie manuelle — jamais de blocage.
+
+### Compression avant envoi
+
+Chaque photo est redimensionnée côté client (max ~1000px de large, JPEG qualité 0.8, via `<canvas>`) avant tout envoi réseau, pour réduire le coût des appels Claude et le temps de réponse. C'est aussi cette version compressée qui est ensuite écrite sur le système de fichiers de l'appareil.
+
 ## Persistance des données
 
 Toutes les données utilisateur (dressing, favoris, agenda, préférences de profil, statistiques de port) sont sauvegardées sur l'appareil et rechargées automatiquement au lancement — rien n'est perdu à la fermeture de l'app.
@@ -54,7 +83,7 @@ Toutes les données utilisateur (dressing, favoris, agenda, préférences de pro
 
 ### Notes d'implémentation
 
-- **Pas de routeur** : l'app gère la navigation entre écrans via du state React (pas de `react-router`), donc aucune configuration de routing particulière n'est nécessaire pour Capacitor (pas de souci de chemins relatifs/`file://` à gérer). Seule exception : `/privacy` (politique de confidentialité) est géré par un routage minimal fait main (`window.location.pathname` + `history.pushState`/`popstate`), sans dépendance supplémentaire, pour avoir une URL publique dédiée (utile pour la soumission aux stores). En hébergement statique, le serveur doit servir `index.html` en fallback pour `/privacy` (règle de réécriture SPA classique, à configurer côté hébergeur).
+- **Pas de routeur** : l'app gère la navigation entre écrans via du state React (pas de `react-router`), donc aucune configuration de routing particulière n'est nécessaire pour Capacitor (pas de souci de chemins relatifs/`file://` à gérer). Seule exception : `/privacy` (politique de confidentialité) est géré par un routage minimal fait main (`window.location.pathname` + `history.pushState`/`popstate`), sans dépendance supplémentaire, pour avoir une URL publique dédiée (utile pour la soumission aux stores). `vercel.json` inclut déjà la règle de réécriture SPA nécessaire (`/(.*)` → `/index.html`) pour que `/privacy` fonctionne en accès direct sur Vercel ; sur un autre hébergeur statique, une règle équivalente est à configurer.
 - **Zones sûres (notch, barre de statut, indicateur d'accueil)** : le viewport (`index.html`) utilise `viewport-fit=cover`, et l'app applique `env(safe-area-inset-*)` en CSS (haut du cadre, barre de navigation basse) pour ne jamais passer sous l'encoche ou la barre de gestes. `capacitor.config.json` active aussi `contentInset: "always"` côté iOS pour un rendu cohérent.
 - **Couleur de fond** : `backgroundColor` est réglé sur `#F6F3EC` (crème, charte graphique de l'app) dans `capacitor.config.json` pour éviter un flash blanc au lancement.
 - **Écran plein cadre sur mobile** : en dessous de 640px de large (tout appareil natif), l'app s'affiche en plein écran sans le cadre de téléphone décoratif (celui-ci n'apparaît qu'en aperçu desktop élargi).
@@ -63,5 +92,7 @@ Toutes les données utilisateur (dressing, favoris, agenda, préférences de pro
 
 - `AthenaStyle.jsx` — composant applicatif principal (tous les écrans).
 - `src/App.jsx` — réexporte `AthenaStyle.jsx`.
+- `api/analyze-clothing.js` — fonction serverless Vercel : reconnaissance photo via Claude Vision (clé API côté serveur uniquement).
+- `vercel.json` — config de déploiement Vercel (build, réécriture SPA, durée max de la fonction).
 - `capacitor.config.json` — configuration Capacitor (appId, appName, webDir, couleurs).
 - `ios/`, `android/` — projets natifs générés par Capacitor (committés, à resynchroniser après chaque build web).
