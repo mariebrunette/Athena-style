@@ -85,6 +85,47 @@ const PLACEHOLDER_COLORS = {
   accessoire: '#8B5E3C',
 };
 
+const COLOR_FAMILY_OPTIONS = [
+  { id: 'blanc', label: 'Blanc', hex: '#FFFFFF' },
+  { id: 'noir', label: 'Noir', hex: '#26241F' },
+  { id: 'gris', label: 'Gris', hex: '#9CA3AF' },
+  { id: 'beige', label: 'Beige', hex: '#D8C3A5' },
+  { id: 'marron', label: 'Marron', hex: '#8B5E3C' },
+  { id: 'bleu', label: 'Bleu', hex: '#4A6FA5' },
+  { id: 'rose', label: 'Rose', hex: '#E3937C' },
+  { id: 'rouge', label: 'Rouge', hex: '#B5473F' },
+  { id: 'vert', label: 'Vert', hex: '#6B8E63' },
+  { id: 'jaune', label: 'Jaune', hex: '#E0C468' },
+  { id: 'orange', label: 'Orange', hex: '#D98A47' },
+  { id: 'violet', label: 'Violet', hex: '#8B6BA5' },
+  { id: 'multicolore', label: 'Multicolore', hex: null },
+];
+
+const SEASON_OPTIONS = [
+  { id: 'ete', label: 'Été' },
+  { id: 'hiver', label: 'Hiver' },
+  { id: 'mi-saison', label: 'Mi-saison' },
+  { id: 'toute-saison', label: 'Toute saison' },
+];
+
+const WARMTH_OPTIONS = [
+  { id: 'leger', label: 'Léger' },
+  { id: 'chaud', label: 'Chaud' },
+];
+
+// Familles de couleurs "neutres" : elles se coordonnent avec n'importe quelle autre
+// couleur, donc ne pénalisent pas la compatibilité d'une tenue ni le choix des pièces.
+const NEUTRAL_COLOR_FAMILIES = ['blanc', 'noir', 'gris', 'beige', 'marron'];
+
+// À partir de la couleur réellement détectée d'une pièce déjà choisie, renvoie les
+// familles de couleurs compatibles à privilégier pour le reste de la tenue (elle-même,
+// plus les neutres). Renvoie undefined si la pièce est neutre ou inconnue : dans ce cas
+// n'importe quelle couleur se coordonne, donc aucun filtre n'est appliqué.
+function compatibleColorFamilies(colorFamily) {
+  if (!colorFamily || NEUTRAL_COLOR_FAMILIES.includes(colorFamily)) return undefined;
+  return [colorFamily, ...NEUTRAL_COLOR_FAMILIES];
+}
+
 // Redimensionne et compresse la photo côté client (~1000px de large max, JPEG) avant
 // tout envoi réseau, pour réduire le coût et le temps de réponse de l'analyse IA, et
 // alléger ce qui est ensuite écrit sur le système de fichiers de l'appareil.
@@ -386,7 +427,12 @@ function computeStyleScores(items, weather) {
   );
 
   const colorFamilies = new Set(items.map((i) => i.colorFamily).filter(Boolean));
-  const colorMatch = Math.min(96, Math.max(55, 96 - Math.max(0, colorFamilies.size - 1) * 12));
+  // Les couleurs neutres (blanc, noir, gris, beige, marron) se coordonnent avec tout :
+  // seules les couleurs non-neutres qui s'accumulent font baisser la compatibilité.
+  const clashingFamilies = new Set(
+    items.map((i) => i.colorFamily).filter((f) => f && !NEUTRAL_COLOR_FAMILIES.includes(f)),
+  );
+  const colorMatch = Math.min(96, Math.max(55, 96 - Math.max(0, clashingFamilies.size - 1) * 12));
 
   const warmthCategory = isCold ? 'chaud' : 'leger';
   const comfort = Math.min(96, 70 + items.filter((i) => i.warmth === warmthCategory).length * 6);
@@ -424,24 +470,34 @@ function generateOutfitForWeather(clothes, weather) {
 
   const items = [];
   const dress = !isRain && !isCold && weather.temp >= 20 ? pickPreferred(pool, 'robe', { warmthPref }) : null;
+  let anchor = null;
   if (dress) {
     items.push(dress);
+    anchor = dress;
   } else {
     const haut = pickPreferred(pool, 'haut', { warmthPref });
-    const bas = pickPreferred(pool, 'bas', { warmthPref });
-    if (haut) items.push(haut);
+    if (haut) {
+      items.push(haut);
+      anchor = haut;
+    }
+    // Le bas est choisi pour se coordonner avec la couleur réellement détectée du haut.
+    const bas = pickPreferred(pool, 'bas', { warmthPref, colorFamilies: compatibleColorFamilies(anchor?.colorFamily) });
     if (bas) items.push(bas);
   }
 
-  const chaussures = pickPreferred(pool, 'chaussures', { warmthPref });
+  // Le reste de la tenue se coordonne avec la couleur détectée de la pièce d'ancrage
+  // (robe ou haut) plutôt que d'être choisi sans tenir compte des couleurs réelles.
+  const colorFamilies = compatibleColorFamilies(anchor?.colorFamily);
+
+  const chaussures = pickPreferred(pool, 'chaussures', { warmthPref, colorFamilies });
   if (chaussures) items.push(chaussures);
 
   if (isRain || isCold) {
-    const veste = pickPreferred(pool, 'veste', { warmthPref });
+    const veste = pickPreferred(pool, 'veste', { warmthPref, colorFamilies });
     if (veste) items.push(veste);
   }
 
-  const accessoire = pickPreferred(pool, 'accessoire', { warmthPref });
+  const accessoire = pickPreferred(pool, 'accessoire', { warmthPref, colorFamilies });
   if (accessoire) items.push(accessoire);
 
   const name = isRain ? 'Look pluie protégé' : isCold ? 'Look bien au chaud' : 'Look léger du jour';
@@ -971,6 +1027,17 @@ function DressingScreen({ clothes, onToggleLaundry }) {
                 <div>
                   <p className="text-sm font-medium text-teal truncate">{item.name}</p>
                   <p className="text-xs text-mauve">{meta?.label}</p>
+                  {(item.color || item.material) && (
+                    <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                      {item.color && (
+                        <span
+                          className="w-3 h-3 rounded-full border border-teal/20 shrink-0"
+                          style={{ backgroundColor: item.color }}
+                        />
+                      )}
+                      {item.material && <span className="text-[11px] text-teal/60 truncate">{item.material}</span>}
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => onToggleLaundry(item.id)}
@@ -1741,6 +1808,86 @@ function AddItemScreen({ onBack, onSave }) {
               >
                 <Icon size={20} />
                 <span className="text-xs font-medium">{c.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Couleur</label>
+        <div className="flex flex-wrap gap-2">
+          {COLOR_FAMILY_OPTIONS.map((cf) => {
+            const active = colorFamily === cf.id;
+            return (
+              <button
+                key={cf.id}
+                onClick={() => {
+                  setColorFamily(cf.id);
+                  if (cf.hex) setColor(cf.hex);
+                }}
+                className={`flex items-center gap-1.5 pl-1.5 pr-3 py-1.5 rounded-full border transition ${
+                  active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                }`}
+              >
+                <span
+                  className="w-4 h-4 rounded-full border border-teal/20 shrink-0"
+                  style={{
+                    background:
+                      cf.hex ?? 'conic-gradient(from 0deg, #E3937C, #4A6FA5, #E0C468, #6B8E63, #E3937C)',
+                  }}
+                />
+                <span className="text-xs font-medium">{cf.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Matière (optionnel)</label>
+        <input
+          value={material ?? ''}
+          onChange={(e) => setMaterial(e.target.value)}
+          placeholder="Ex : coton, laine, cuir..."
+          className="w-full bg-pink/15 rounded-xl px-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+        />
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Saison</label>
+        <div className="grid grid-cols-2 gap-2.5">
+          {SEASON_OPTIONS.map((s) => {
+            const active = season === s.id;
+            return (
+              <button
+                key={s.id}
+                onClick={() => setSeason(s.id)}
+                className={`py-2.5 rounded-2xl border text-sm font-medium transition ${
+                  active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                }`}
+              >
+                {s.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Niveau de chaleur</label>
+        <div className="grid grid-cols-2 gap-2.5">
+          {WARMTH_OPTIONS.map((w) => {
+            const active = warmth === w.id;
+            return (
+              <button
+                key={w.id}
+                onClick={() => setWarmth(w.id)}
+                className={`py-2.5 rounded-2xl border text-sm font-medium transition ${
+                  active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                }`}
+              >
+                {w.label}
               </button>
             );
           })}
