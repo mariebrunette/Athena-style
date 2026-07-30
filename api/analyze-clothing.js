@@ -26,12 +26,15 @@ const EXTRACT_TOOL = {
         type: 'string',
         enum: ['blanc', 'noir', 'gris', 'beige', 'marron', 'rouge', 'rose', 'orange', 'jaune', 'vert', 'bleu', 'violet', 'multicolore'],
         description:
-          "Famille de couleur dominante DU VÊTEMENT LUI-MÊME, en ignorant le fond, l'éclairage, les ombres et les reflets sur le tissu. Choisis obligatoirement l'une des 13 familles listées, même pour une teinte ambiguë : pour les couleurs à la frontière entre deux familles (kaki, olive, moutarde, bordeaux, corail...), tranche vers la famille dominante la plus proche (ex: kaki/olive → vert, moutarde → jaune, bordeaux → rouge, corail → orange ou rose selon la nuance) et précise la nuance exacte dans le champ 'color'. Sois particulièrement attentif aux verts foncés et olive, souvent confondus à tort avec le jaune ou le marron : un vert kaki ou militaire reste 'vert', pas 'jaune' ni 'marron'.",
+          "Famille de couleur dominante DU VÊTEMENT LUI-MÊME, en ignorant le fond, l'éclairage, les ombres et les reflets sur le tissu. Choisis obligatoirement l'une des 13 familles listées, même pour une teinte ambiguë. " +
+          "RÈGLE DE COHÉRENCE (impérative) : colorFamily doit correspondre exactement au mot de couleur principal que tu utilises toi-même pour décrire la nuance dans le champ 'color' — pas au mot secondaire qui précise la nuance. Un nom de nuance français est construit 'couleur principale + précision' : c'est la couleur principale (le premier mot) qui détermine colorFamily, jamais le mot de précision pris isolément. " +
+          "Exemples à ne pas confondre : 'vert citron' → colorFamily='vert' (le mot 'citron' précise la nuance de vert, ce n'est pas du jaune même si un citron est jaune) ; 'vert olive' → colorFamily='vert' ; 'jaune moutarde' → colorFamily='jaune' ; 'bleu canard' → colorFamily='bleu' (même si la teinte tire sur le vert) ; 'rose corail' → colorFamily='rose' ; 'rouge bordeaux' → colorFamily='rouge'. " +
+          "Sois particulièrement attentif aux verts foncés, olive et citron, souvent mal classés en jaune ou marron par confusion avec le fruit ou la teinte évoqués : si le mot principal est 'vert', colorFamily reste 'vert'.",
       },
       color: {
         type: 'string',
         description:
-          "Couleur dominante du vêtement en code hexadécimal (ex: '#EDEAE2'), estimée sur le tissu lui-même en excluant fond/ombres/reflets. Si la teinte est ambiguë ou intermédiaire (kaki, olive, moutarde, bordeaux, corail...), précise aussi la nuance exacte en toutes lettres avant le code hexadécimal (ex: 'vert olive #6B6B47', 'jaune moutarde #C9A227').",
+          "Couleur dominante du vêtement en code hexadécimal (ex: '#EDEAE2'), estimée sur le tissu lui-même en excluant fond/ombres/reflets. Si la teinte est ambiguë ou intermédiaire (citron, olive, moutarde, bordeaux, corail, canard...), précise aussi la nuance exacte en toutes lettres avant le code hexadécimal, sous la forme 'couleur principale + précision' (ex: 'vert citron #A8C93A', 'jaune moutarde #C9A227', 'bleu canard #1F6F6B'). Le premier mot de cette nuance doit être exactement la valeur choisie pour colorFamily.",
       },
       material: {
         type: 'string',
@@ -118,10 +121,13 @@ export default async function handler(req, res) {
                   "Analyse ce vêtement et extrais ses informations avec l'outil fourni. " +
                   "Pour la couleur : identifie précisément la teinte du vêtement lui-même, " +
                   "en ignorant le fond de la photo, l'éclairage ambiant, les ombres et les " +
-                  "reflets sur le tissu. Fais bien la distinction entre les verts foncés/olive " +
-                  "et le jaune ou le marron, souvent confondus. Pour une teinte ambiguë entre " +
-                  "deux familles (kaki, olive, moutarde, bordeaux, corail...), tranche vers la " +
-                  "famille de couleur dominante et précise la nuance exacte dans le champ color.",
+                  "reflets sur le tissu. Fais bien la distinction entre les verts foncés/olive/citron " +
+                  "et le jaune ou le marron, souvent confondus. Pour une teinte ambiguë ou composée " +
+                  "(citron, olive, moutarde, bordeaux, corail, canard...), nomme-la dans le champ color " +
+                  "sous la forme 'couleur principale + précision' (ex: 'vert citron', pas juste 'citron'), " +
+                  "puis reporte impérativement cette même couleur principale dans colorFamily : les deux " +
+                  "champs doivent être cohérents entre eux (ex: color='vert citron' impose colorFamily='vert', " +
+                  "jamais 'jaune'). Ne classe jamais colorFamily d'après le mot de précision seul.",
               },
             ],
           },
