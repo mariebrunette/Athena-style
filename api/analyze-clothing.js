@@ -24,12 +24,14 @@ const EXTRACT_TOOL = {
       },
       colorFamily: {
         type: 'string',
-        enum: ['blanc', 'noir', 'gris', 'beige', 'marron', 'bleu', 'rose', 'rouge', 'vert', 'jaune', 'orange', 'violet', 'multicolore'],
-        description: 'Famille de couleur dominante.',
+        enum: ['blanc', 'noir', 'gris', 'beige', 'marron', 'rouge', 'rose', 'orange', 'jaune', 'vert', 'bleu', 'violet', 'multicolore'],
+        description:
+          "Famille de couleur dominante DU VÊTEMENT LUI-MÊME, en ignorant le fond, l'éclairage, les ombres et les reflets sur le tissu. Choisis obligatoirement l'une des 13 familles listées, même pour une teinte ambiguë : pour les couleurs à la frontière entre deux familles (kaki, olive, moutarde, bordeaux, corail...), tranche vers la famille dominante la plus proche (ex: kaki/olive → vert, moutarde → jaune, bordeaux → rouge, corail → orange ou rose selon la nuance) et précise la nuance exacte dans le champ 'color'. Sois particulièrement attentif aux verts foncés et olive, souvent confondus à tort avec le jaune ou le marron : un vert kaki ou militaire reste 'vert', pas 'jaune' ni 'marron'.",
       },
       color: {
         type: 'string',
-        description: "Couleur dominante en code hexadécimal (ex: '#EDEAE2').",
+        description:
+          "Couleur dominante du vêtement en code hexadécimal (ex: '#EDEAE2'), estimée sur le tissu lui-même en excluant fond/ombres/reflets. Si la teinte est ambiguë ou intermédiaire (kaki, olive, moutarde, bordeaux, corail...), précise aussi la nuance exacte en toutes lettres avant le code hexadécimal (ex: 'vert olive #6B6B47', 'jaune moutarde #C9A227').",
       },
       material: {
         type: 'string',
@@ -112,7 +114,14 @@ export default async function handler(req, res) {
               },
               {
                 type: 'text',
-                text: "Analyse ce vêtement et extrais ses informations avec l'outil fourni.",
+                text:
+                  "Analyse ce vêtement et extrais ses informations avec l'outil fourni. " +
+                  "Pour la couleur : identifie précisément la teinte du vêtement lui-même, " +
+                  "en ignorant le fond de la photo, l'éclairage ambiant, les ombres et les " +
+                  "reflets sur le tissu. Fais bien la distinction entre les verts foncés/olive " +
+                  "et le jaune ou le marron, souvent confondus. Pour une teinte ambiguë entre " +
+                  "deux familles (kaki, olive, moutarde, bordeaux, corail...), tranche vers la " +
+                  "famille de couleur dominante et précise la nuance exacte dans le champ color.",
               },
             ],
           },
