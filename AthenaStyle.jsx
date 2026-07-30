@@ -3,7 +3,7 @@ import {
   Home, Shirt, Sparkles, Heart, User, Plus, Camera, Upload, Check,
   ArrowLeft, Send, Calendar, Sun, CloudSun, Cloud, CloudRain, Wind,
   Footprints, Watch, ChevronRight, TrendingUp, Clock, Lightbulb,
-  Loader2, MapPin, RefreshCw, Trash2,
+  Loader2, MapPin, RefreshCw, Trash2, X,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
@@ -149,6 +149,19 @@ function compressImage(dataUrl, maxWidth = 1000, quality = 0.8) {
     img.src = dataUrl;
   });
 }
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Impossible de lire le fichier.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Nombre d'analyses IA menées en parallèle en mode "ajout rapide", pour ne pas saturer
+// le réseau ni la fonction serverless quand plusieurs photos sont ajoutées d'un coup.
+const QUICK_ADD_CONCURRENCY = 3;
 
 // Appelle la fonction serverless /api/analyze-clothing (jamais l'API Anthropic
 // directement depuis le client, pour ne jamais exposer la clé API). Timeout garanti en
@@ -1658,7 +1671,37 @@ function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm }) {
   );
 }
 
-function AddItemScreen({ onBack, onSave }) {
+function AddItemScreen({ onBack, onSave, onSaveMany }) {
+  const [mode, setMode] = useState('single');
+  return (
+    <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
+      <ScreenHeader title="Ajouter un vêtement" onBack={onBack} />
+
+      <div className="flex gap-1 bg-pink/10 rounded-full p-1">
+        <button
+          onClick={() => setMode('single')}
+          className={`flex-1 rounded-full py-2 text-sm font-medium transition ${
+            mode === 'single' ? 'bg-mauve text-cream' : 'text-teal/70'
+          }`}
+        >
+          Un par un
+        </button>
+        <button
+          onClick={() => setMode('batch')}
+          className={`flex-1 rounded-full py-2 text-sm font-medium transition ${
+            mode === 'batch' ? 'bg-mauve text-cream' : 'text-teal/70'
+          }`}
+        >
+          Ajout rapide
+        </button>
+      </div>
+
+      {mode === 'single' ? <SingleAddForm onSave={onSave} /> : <QuickAddPanel onSaveMany={onSaveMany} />}
+    </div>
+  );
+}
+
+function SingleAddForm({ onSave }) {
   const [photo, setPhoto] = useState(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState(null);
@@ -1723,9 +1766,7 @@ function AddItemScreen({ onBack, onSave }) {
   }
 
   return (
-    <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
-      <ScreenHeader title="Ajouter un vêtement" onBack={onBack} />
-
+    <>
       <div className="bg-pink/15 rounded-3xl p-4 shadow-sm">
         <div className="w-full aspect-[4/3] rounded-2xl border-2 border-dashed border-mauve/40 bg-cream flex items-center justify-center overflow-hidden mb-3 relative">
           {photo ? (
@@ -1903,7 +1944,403 @@ function AddItemScreen({ onBack, onSave }) {
       >
         <Check size={18} /> Valider
       </button>
+    </>
+  );
+}
+
+function QuickAddEditModal({ item, onChange, onClose }) {
+  return (
+    <div className="absolute inset-0 z-30 flex items-end sm:items-center justify-center bg-teal/40 backdrop-blur-sm px-0 sm:px-6">
+      <div className="w-full max-h-[88%] overflow-y-auto bg-cream rounded-t-3xl sm:rounded-3xl p-5 flex flex-col gap-5 shadow-2xl">
+        <div className="flex items-center justify-between">
+          <h2 className="text-mauve font-semibold text-lg">Modifier la pièce</h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-pink/20 flex items-center justify-center text-teal shrink-0"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {item.photo && <img src={item.photo} alt="Aperçu" className="w-full aspect-[4/3] object-cover rounded-2xl" />}
+
+        {item.status === 'error' && (
+          <p className="text-xs text-mauve/70 flex items-center gap-1.5 px-1">
+            <Sparkles size={12} className="shrink-0" /> L'analyse automatique n'a pas fonctionné, renseigne les informations ci-dessous.
+          </p>
+        )}
+
+        <div>
+          <label className="text-teal text-sm font-medium mb-2 block">Nom (optionnel)</label>
+          <input
+            value={item.name}
+            onChange={(e) => onChange({ name: e.target.value })}
+            placeholder="Ex : Chemise en lin"
+            className="w-full bg-pink/15 rounded-xl px-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+          />
+        </div>
+
+        <div>
+          <label className="text-teal text-sm font-medium mb-2 block">Catégorie</label>
+          <div className="grid grid-cols-3 gap-2.5">
+            {CATEGORIES.map((c) => {
+              const Icon = c.icon;
+              const active = item.category === c.id;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => onChange({ category: c.id })}
+                  className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border transition ${
+                    active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                  }`}
+                >
+                  <Icon size={20} />
+                  <span className="text-xs font-medium">{c.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-teal text-sm font-medium mb-2 block">Couleur</label>
+          <div className="flex flex-wrap gap-2">
+            {COLOR_FAMILY_OPTIONS.map((cf) => {
+              const active = item.colorFamily === cf.id;
+              return (
+                <button
+                  key={cf.id}
+                  onClick={() => onChange({ colorFamily: cf.id, color: cf.hex ?? item.color })}
+                  className={`flex items-center gap-1.5 pl-1.5 pr-3 py-1.5 rounded-full border transition ${
+                    active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                  }`}
+                >
+                  <span
+                    className="w-4 h-4 rounded-full border border-teal/20 shrink-0"
+                    style={{
+                      background:
+                        cf.hex ?? 'conic-gradient(from 0deg, #E3937C, #4A6FA5, #E0C468, #6B8E63, #E3937C)',
+                    }}
+                  />
+                  <span className="text-xs font-medium">{cf.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-teal text-sm font-medium mb-2 block">Matière (optionnel)</label>
+          <input
+            value={item.material ?? ''}
+            onChange={(e) => onChange({ material: e.target.value })}
+            placeholder="Ex : coton, laine, cuir..."
+            className="w-full bg-pink/15 rounded-xl px-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+          />
+        </div>
+
+        <div>
+          <label className="text-teal text-sm font-medium mb-2 block">Saison</label>
+          <div className="grid grid-cols-2 gap-2.5">
+            {SEASON_OPTIONS.map((s) => {
+              const active = item.season === s.id;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => onChange({ season: s.id })}
+                  className={`py-2.5 rounded-2xl border text-sm font-medium transition ${
+                    active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-teal text-sm font-medium mb-2 block">Niveau de chaleur</label>
+          <div className="grid grid-cols-2 gap-2.5">
+            {WARMTH_OPTIONS.map((w) => {
+              const active = item.warmth === w.id;
+              return (
+                <button
+                  key={w.id}
+                  onClick={() => onChange({ warmth: w.id })}
+                  className={`py-2.5 rounded-2xl border text-sm font-medium transition ${
+                    active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                  }`}
+                >
+                  {w.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 bg-mauve text-cream active:scale-[0.98]"
+        >
+          <Check size={18} /> OK
+        </button>
+      </div>
     </div>
+  );
+}
+
+function QuickAddPanel({ onSaveMany }) {
+  const [queue, setQueue] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const galleryInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  const activeCountRef = useRef(0);
+  const pendingRef = useRef([]);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const total = queue.length;
+  const processed = queue.filter((it) => it.status === 'done' || it.status === 'error').length;
+  const isAnalyzing = total > 0 && processed < total;
+  const editingItem = queue.find((it) => it.id === editingId) || null;
+
+  function updateItem(id, patch) {
+    if (!mountedRef.current) return;
+    setQueue((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  }
+
+  async function runJob({ id, photo }) {
+    updateItem(id, { status: 'analyzing' });
+    try {
+      const detected = await analyzeClothingPhoto(photo);
+      updateItem(id, {
+        status: 'done',
+        name: detected.name || '',
+        category: CATEGORIES.some((c) => c.id === detected.category) ? detected.category : null,
+        color: detected.color,
+        colorFamily: detected.colorFamily,
+        material: detected.material,
+        season: detected.season,
+        warmth: detected.warmth === 'chaud' ? 'chaud' : 'leger',
+      });
+    } catch {
+      updateItem(id, { status: 'error' });
+    }
+  }
+
+  // Traite la file d'analyse avec un nombre limité de requêtes en parallèle
+  // (QUICK_ADD_CONCURRENCY), pour ne pas saturer le réseau ni la fonction serverless
+  // quand plusieurs photos sont ajoutées d'un coup (galerie multiple, ou prises
+  // successives). Les refs persistent tant que le composant reste monté, même si
+  // handleFiles est appelé plusieurs fois avant la fin d'un lot précédent.
+  function pump() {
+    while (activeCountRef.current < QUICK_ADD_CONCURRENCY && pendingRef.current.length > 0) {
+      const job = pendingRef.current.shift();
+      activeCountRef.current += 1;
+      runJob(job).finally(() => {
+        activeCountRef.current -= 1;
+        pump();
+      });
+    }
+  }
+
+  function enqueueForAnalysis(jobs) {
+    pendingRef.current.push(...jobs);
+    pump();
+  }
+
+  async function handleFiles(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+
+    const prepared = (
+      await Promise.all(
+        files.map(async (file) => {
+          let dataUrl;
+          try {
+            dataUrl = await readFileAsDataURL(file);
+          } catch {
+            return null;
+          }
+          let compressed;
+          try {
+            compressed = await compressImage(dataUrl);
+          } catch {
+            compressed = dataUrl;
+          }
+          return {
+            id: `q${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            photo: compressed,
+            status: 'queued',
+            name: '',
+            category: null,
+            color: undefined,
+            colorFamily: undefined,
+            material: undefined,
+            season: undefined,
+            warmth: 'leger',
+          };
+        }),
+      )
+    ).filter(Boolean);
+
+    if (!prepared.length) return;
+    setQueue((prev) => [...prev, ...prepared]);
+    enqueueForAnalysis(prepared.map(({ id, photo }) => ({ id, photo })));
+  }
+
+  function removeItem(id) {
+    setQueue((prev) => prev.filter((it) => it.id !== id));
+    if (editingId === id) setEditingId(null);
+  }
+
+  function handleSaveAll() {
+    if (!queue.length || isAnalyzing) return;
+    const items = queue.map((it) => {
+      const categoryMeta = CATEGORIES.find((c) => c.id === it.category);
+      return {
+        name: it.name?.trim() || (categoryMeta ? `${categoryMeta.label} sans nom` : 'Vêtement sans nom'),
+        category: it.category,
+        photo: it.photo,
+        color: it.color ?? (it.category ? PLACEHOLDER_COLORS[it.category] : undefined),
+        colorFamily: it.colorFamily,
+        warmth: it.warmth,
+        material: it.material,
+        season: it.season,
+      };
+    });
+    onSaveMany(items);
+    setQueue([]);
+  }
+
+  return (
+    <>
+      <div className="bg-pink/15 rounded-3xl p-4 shadow-sm flex flex-col gap-3">
+        <p className="text-xs text-mauve flex items-center gap-1.5">
+          <Sparkles size={12} className="shrink-0" /> Ajoute plusieurs photos : elles sont analysées automatiquement en arrière-plan.
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => cameraInputRef.current?.click()}
+            className="flex-1 flex items-center justify-center gap-2 bg-mauve text-cream rounded-full py-2.5 px-2 text-sm font-medium whitespace-nowrap"
+          >
+            <Camera size={16} /> Photo
+          </button>
+          <button
+            onClick={() => galleryInputRef.current?.click()}
+            className="flex-1 flex items-center justify-center gap-2 bg-bluegray/40 text-teal rounded-full py-2.5 px-2 text-sm font-medium whitespace-nowrap"
+          >
+            <Upload size={16} /> Galerie (plusieurs)
+          </button>
+        </div>
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFiles}
+          className="hidden"
+        />
+        <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={handleFiles} className="hidden" />
+      </div>
+
+      {total > 0 && (
+        <div>
+          <div className="flex justify-between text-xs text-mauve mb-1">
+            <span>{isAnalyzing ? 'Analyse en cours...' : 'Analyse terminée'}</span>
+            <span className="font-semibold">
+              {processed} sur {total} analysés
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-bluegray/30 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-mauve transition-all"
+              style={{ width: `${total ? (processed / total) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {total === 0 ? (
+        <p className="text-center text-mauve py-12 text-sm">
+          Ajoute plusieurs photos pour cataloguer ton dressing d'un coup.
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {queue.map((item) => (
+            <div key={item.id} className="relative bg-pink/15 rounded-2xl p-2.5 shadow-sm flex flex-col gap-2">
+              <button onClick={() => setEditingId(item.id)} className="text-left flex flex-col gap-2">
+                <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-cream">
+                  <img src={item.photo} alt="" className="w-full h-full object-cover" />
+                  {item.status === 'analyzing' && (
+                    <div className="absolute inset-0 bg-teal/50 backdrop-blur-[1px] flex items-center justify-center">
+                      <Loader2 size={20} className="animate-spin text-cream" />
+                    </div>
+                  )}
+                  {item.status === 'error' && (
+                    <span className="absolute top-1.5 left-1.5 bg-mauve text-cream text-[9px] font-medium px-1.5 py-0.5 rounded-full">
+                      À compléter
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-teal truncate">{item.name || 'Sans nom'}</p>
+                  <p className="text-xs text-mauve">
+                    {CATEGORIES.find((c) => c.id === item.category)?.label || 'Catégorie ?'}
+                  </p>
+                  {item.color && (
+                    <span
+                      className="inline-block w-3 h-3 rounded-full border border-teal/20 mt-1"
+                      style={{ backgroundColor: item.color }}
+                    />
+                  )}
+                </div>
+              </button>
+              <button
+                onClick={() => removeItem(item.id)}
+                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-teal/50 text-cream flex items-center justify-center"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={handleSaveAll}
+        disabled={!queue.length || isAnalyzing}
+        className={`w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 transition ${
+          queue.length && !isAnalyzing ? 'bg-mauve text-cream active:scale-[0.98]' : 'bg-bluegray/40 text-teal/40'
+        }`}
+      >
+        {isAnalyzing ? (
+          <>
+            <Loader2 size={18} className="animate-spin" /> Analyse en cours...
+          </>
+        ) : (
+          <>
+            <Check size={18} /> Tout ajouter au dressing{queue.length ? ` (${queue.length})` : ''}
+          </>
+        )}
+      </button>
+
+      {editingItem && (
+        <QuickAddEditModal
+          item={editingItem}
+          onChange={(patch) => updateItem(editingItem.id, patch)}
+          onClose={() => setEditingId(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -2272,6 +2709,43 @@ export default function AthenaStyle() {
     setScreen({ name: 'main' });
   }
 
+  // Ajoute plusieurs vêtements d'un coup (mode "ajout rapide") : les photos sont écrites
+  // sur le système de fichiers en parallèle puis tous les articles rejoignent le dressing
+  // en une seule mise à jour d'état.
+  async function addClothingBatch(items) {
+    const prepared = await Promise.all(
+      items.map(async (item, idx) => {
+        const id = `c${Date.now()}-${idx}`;
+        let photoPath = null;
+        if (item.photo) {
+          photoPath = await savePhotoFile(item.photo, `${id}.jpg`);
+        }
+        return { id, photoPath, rawPhoto: item.photo, item };
+      }),
+    );
+    setClothes((prev) => [
+      ...prev,
+      ...prepared.map(({ id, photoPath, item }) => ({
+        id,
+        laundry: false,
+        wearCount: 0,
+        monthsSinceWorn: null,
+        warmth: 'leger',
+        ...item,
+        photo: photoPath,
+      })),
+    ]);
+    setPhotoSrcMap((prev) => {
+      const next = { ...prev };
+      prepared.forEach(({ photoPath, rawPhoto }) => {
+        if (photoPath) next[photoPath] = rawPhoto;
+      });
+      return next;
+    });
+    setTab('dressing');
+    setScreen({ name: 'main' });
+  }
+
   function toggleLaundry(clothingId) {
     setClothes((prev) => prev.map((c) => (c.id === clothingId ? { ...c, laundry: !c.laundry } : c)));
   }
@@ -2418,7 +2892,9 @@ export default function AthenaStyle() {
             )}
             {screen.name === 'stats' && <StatsScreen clothes={clothes} onBack={goBack} />}
             {screen.name === 'privacy' && <PrivacyScreen onBack={goBack} />}
-            {screen.name === 'add-item' && <AddItemScreen onBack={goBack} onSave={addClothing} />}
+            {screen.name === 'add-item' && (
+              <AddItemScreen onBack={goBack} onSave={addClothing} onSaveMany={addClothingBatch} />
+            )}
             {screen.name === 'weather-prefs' && (
               <WeatherPrefsScreen
                 prefs={weatherPrefs}
