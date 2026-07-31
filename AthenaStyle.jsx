@@ -993,7 +993,7 @@ function HomeScreen({
   );
 }
 
-function DressingScreen({ clothes, onToggleLaundry }) {
+function DressingScreen({ clothes, onToggleLaundry, onOpenItem }) {
   const [filter, setFilter] = useState('tous');
   const filtered = filter === 'tous' ? clothes : clothes.filter((c) => c.category === filter);
   return (
@@ -1021,37 +1021,39 @@ function DressingScreen({ clothes, onToggleLaundry }) {
             return (
               <div
                 key={item.id}
-                className={`bg-pink/15 rounded-2xl p-2.5 shadow-sm flex flex-col gap-2 text-left transition ${
+                className={`bg-pink/15 rounded-2xl p-2.5 shadow-sm flex flex-col gap-2 transition ${
                   item.laundry ? 'opacity-60' : ''
                 }`}
               >
-                <div className="relative">
-                  <ClothingThumb
-                    item={item}
-                    className={`w-full aspect-square ${item.laundry ? 'grayscale' : ''}`}
-                    iconSize={28}
-                  />
-                  {item.laundry && (
-                    <span className="absolute top-1.5 left-1.5 bg-mauve text-cream text-[9px] font-medium px-1.5 py-0.5 rounded-full">
-                      Au lavage
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-teal truncate">{item.name}</p>
-                  <p className="text-xs text-mauve">{meta?.label}</p>
-                  {(item.color || item.material) && (
-                    <div className="flex items-center gap-1.5 mt-1 min-w-0">
-                      {item.color && (
-                        <span
-                          className="w-3 h-3 rounded-full border border-teal/20 shrink-0"
-                          style={{ backgroundColor: item.color }}
-                        />
-                      )}
-                      {item.material && <span className="text-[11px] text-teal/60 truncate">{item.material}</span>}
-                    </div>
-                  )}
-                </div>
+                <button onClick={() => onOpenItem(item.id)} className="text-left flex flex-col gap-2">
+                  <div className="relative">
+                    <ClothingThumb
+                      item={item}
+                      className={`w-full aspect-square ${item.laundry ? 'grayscale' : ''}`}
+                      iconSize={28}
+                    />
+                    {item.laundry && (
+                      <span className="absolute top-1.5 left-1.5 bg-mauve text-cream text-[9px] font-medium px-1.5 py-0.5 rounded-full">
+                        Au lavage
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-teal truncate">{item.name}</p>
+                    <p className="text-xs text-mauve">{meta?.label}</p>
+                    {(item.color || item.material) && (
+                      <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                        {item.color && (
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: item.color, boxShadow: 'inset 0 0 0 1px rgba(51,80,86,0.25)' }}
+                          />
+                        )}
+                        {item.material && <span className="text-[11px] text-teal/60 truncate">{item.material}</span>}
+                      </div>
+                    )}
+                  </div>
+                </button>
                 <button
                   onClick={() => onToggleLaundry(item.id)}
                   className={`flex items-center gap-1.5 text-[11px] font-medium rounded-full px-2 py-1 self-start transition ${
@@ -2408,6 +2410,218 @@ function OutfitDetailScreen({ outfit, clothesById, isFavorite, onToggleFavorite,
   );
 }
 
+function ClothingDetailScreen({ item, onBack, onSave, onDelete }) {
+  const [name, setName] = useState(item?.name ?? '');
+  const [category, setCategory] = useState(item?.category ?? null);
+  const [colorFamily, setColorFamily] = useState(item?.colorFamily);
+  const [color, setColor] = useState(item?.color);
+  const [material, setMaterial] = useState(item?.material ?? '');
+  const [season, setSeason] = useState(item?.season);
+  const [warmth, setWarmth] = useState(item?.warmth ?? 'leger');
+  const [laundry, setLaundry] = useState(item?.laundry ?? false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  if (!item) {
+    return (
+      <div className="px-5 pt-6">
+        <ScreenHeader title="Détail du vêtement" onBack={onBack} />
+        <p className="text-mauve text-center mt-10">Vêtement introuvable.</p>
+      </div>
+    );
+  }
+
+  const lastWornLabel =
+    !item.wearCount || item.monthsSinceWorn == null
+      ? 'Jamais porté'
+      : item.monthsSinceWorn === 0
+        ? 'Ce mois-ci'
+        : `Il y a ${item.monthsSinceWorn} mois`;
+
+  function handleSave() {
+    onSave(item.id, {
+      name: name.trim() || item.name,
+      category,
+      colorFamily,
+      color,
+      material,
+      season,
+      warmth,
+      laundry,
+    });
+  }
+
+  return (
+    <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
+      <ScreenHeader title="Détail du vêtement" onBack={onBack} />
+
+      <ClothingThumb item={{ ...item, color }} className="w-full aspect-[4/3]" iconSize={48} />
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Nom</label>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Ex : Chemise en lin"
+          className="w-full bg-pink/15 rounded-xl px-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+        />
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Catégorie</label>
+        <div className="grid grid-cols-3 gap-2.5">
+          {CATEGORIES.map((c) => {
+            const Icon = c.icon;
+            const active = category === c.id;
+            return (
+              <button
+                key={c.id}
+                onClick={() => setCategory(c.id)}
+                className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border transition ${
+                  active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                }`}
+              >
+                <Icon size={20} />
+                <span className="text-xs font-medium">{c.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Couleur</label>
+        <div className="flex flex-wrap gap-2">
+          {COLOR_FAMILY_OPTIONS.map((cf) => {
+            const active = colorFamily === cf.id;
+            return (
+              <button
+                key={cf.id}
+                onClick={() => {
+                  setColorFamily(cf.id);
+                  if (cf.hex) setColor(cf.hex);
+                }}
+                className={`flex items-center gap-1.5 pl-1.5 pr-3 py-1.5 rounded-full border transition ${
+                  active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                }`}
+              >
+                <span
+                  className="w-4 h-4 rounded-full border border-teal/20 shrink-0"
+                  style={{
+                    background:
+                      cf.hex ?? 'conic-gradient(from 0deg, #E3937C, #4A6FA5, #E0C468, #6B8E63, #E3937C)',
+                  }}
+                />
+                <span className="text-xs font-medium">{cf.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Matière</label>
+        <input
+          value={material ?? ''}
+          onChange={(e) => setMaterial(e.target.value)}
+          placeholder="Ex : coton, laine, cuir..."
+          className="w-full bg-pink/15 rounded-xl px-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+        />
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Saison</label>
+        <div className="grid grid-cols-2 gap-2.5">
+          {SEASON_OPTIONS.map((s) => {
+            const active = season === s.id;
+            return (
+              <button
+                key={s.id}
+                onClick={() => setSeason(s.id)}
+                className={`py-2.5 rounded-2xl border text-sm font-medium transition ${
+                  active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                }`}
+              >
+                {s.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Niveau de chaleur</label>
+        <div className="grid grid-cols-2 gap-2.5">
+          {WARMTH_OPTIONS.map((w) => {
+            const active = warmth === w.id;
+            return (
+              <button
+                key={w.id}
+                onClick={() => setWarmth(w.id)}
+                className={`py-2.5 rounded-2xl border text-sm font-medium transition ${
+                  active ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+                }`}
+              >
+                {w.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Statut</label>
+        <button
+          onClick={() => setLaundry((v) => !v)}
+          className={`w-full flex items-center gap-2 text-sm font-medium rounded-2xl px-4 py-3 border transition ${
+            laundry ? 'bg-mauve border-mauve text-cream' : 'bg-pink/10 border-bluegray/30 text-teal'
+          }`}
+        >
+          <span
+            className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
+              laundry ? 'bg-cream border-cream' : 'border-teal/40 bg-transparent'
+            }`}
+          >
+            {laundry && <Check size={11} className="text-mauve" />}
+          </span>
+          Au lavage
+        </button>
+      </div>
+
+      <div>
+        <h2 className="text-teal text-sm font-medium mb-2">Statistiques de port</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="Fois portée" value={item.wearCount ?? 0} />
+          <StatCard label="Dernière fois" value={lastWornLabel} />
+        </div>
+      </div>
+
+      <button
+        onClick={handleSave}
+        className="w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 bg-mauve text-cream active:scale-[0.98] transition"
+      >
+        <Check size={18} /> Enregistrer les modifications
+      </button>
+
+      <button
+        onClick={() => setShowDeleteConfirm(true)}
+        className="w-full rounded-full py-3 font-medium flex items-center justify-center gap-2 border border-mauve/40 text-mauve transition"
+      >
+        <Trash2 size={16} /> Supprimer cet article
+      </button>
+
+      {showDeleteConfirm && (
+        <ConfirmDialog
+          title="Supprimer cet article"
+          message={`"${item.name}" sera définitivement supprimé de ton dressing, de tes tenues et de tes favoris. Cette action est irréversible.`}
+          confirmLabel="Supprimer"
+          onCancel={() => setShowDeleteConfirm(false)}
+          onConfirm={() => onDelete(item.id)}
+        />
+      )}
+    </div>
+  );
+}
+
 function WeekScreen({ week, outfits, clothes, clothesById, events, onPrepare, onOpenOutfit, onAddEvent, onEditEvent, onBack }) {
   const [preparing, setPreparing] = useState(false);
 
@@ -2619,6 +2833,8 @@ export default function AthenaStyle() {
   );
   const outfitDetailOutfit =
     screen.name === 'outfit-detail' ? screen.outfit || outfits.find((o) => o.id === screen.outfitId) : null;
+  const clothingDetailItem =
+    screen.name === 'clothing-detail' ? clothes.find((c) => c.id === screen.itemId) : null;
 
   async function refreshWeather() {
     setWeatherMeta((m) => ({ ...m, loading: true, error: null }));
@@ -2852,7 +3068,11 @@ export default function AthenaStyle() {
               />
             )}
             {screen.name === 'main' && tab === 'dressing' && (
-              <DressingScreen clothes={clothes} onToggleLaundry={toggleLaundry} />
+              <DressingScreen
+                clothes={clothes}
+                onToggleLaundry={toggleLaundry}
+                onOpenItem={(id) => openScreen('clothing-detail', { itemId: id })}
+              />
             )}
             {screen.name === 'main' && tab === 'ai' && (
               <ChatScreen
@@ -2932,6 +3152,23 @@ export default function AthenaStyle() {
                 isFavorite={outfitDetailOutfit ? favorites.includes(outfitDetailOutfit.id) : false}
                 onToggleFavorite={() => outfitDetailOutfit && handleOutfitSave(outfitDetailOutfit)}
                 onBack={goBack}
+              />
+            )}
+            {screen.name === 'clothing-detail' && (
+              <ClothingDetailScreen
+                item={clothingDetailItem}
+                onBack={goBack}
+                onSave={(id, patch) => {
+                  setClothes((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+                  goBack();
+                }}
+                onDelete={async (id) => {
+                  const target = clothes.find((c) => c.id === id);
+                  if (target?.photo) await deletePhotoFile(target.photo);
+                  setClothes((prev) => prev.filter((c) => c.id !== id));
+                  setOutfits((prev) => prev.map((o) => ({ ...o, itemIds: o.itemIds.filter((iid) => iid !== id) })));
+                  goBack();
+                }}
               />
             )}
             {screen.name === 'week-plan' && (
