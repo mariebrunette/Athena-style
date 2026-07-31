@@ -88,10 +88,32 @@ Toutes les données utilisateur (dressing, favoris, agenda, préférences de pro
 - **Couleur de fond** : `backgroundColor` est réglé sur `#F6F3EC` (crème, charte graphique de l'app) dans `capacitor.config.json` pour éviter un flash blanc au lancement.
 - **Écran plein cadre sur mobile** : en dessous de 640px de large (tout appareil natif), l'app s'affiche en plein écran sans le cadre de téléphone décoratif (celui-ci n'apparaît qu'en aperçu desktop élargi).
 
+## Compte et sauvegarde cloud (Supabase)
+
+**En cours de mise en place.** L'app reste aujourd'hui 100% locale (voir "Persistance des données" ci-dessus) : ce qui suit prépare la connexion à [Supabase](https://supabase.com) (authentification par email + base de données + stockage des photos) pour que le dressing survive à une désinstallation ou un changement de téléphone. Rien n'est encore branché à l'interface — l'app fonctionne exactement comme avant tant que l'authentification (étape suivante) n'est pas en place.
+
+### Créer le projet Supabase
+
+1. Créer un projet sur [supabase.com](https://supabase.com).
+2. Dans **SQL Editor**, exécuter le contenu de `supabase/schema.sql` : il crée les tables (`clothes`, `outfits`, `calendar_events`, `preferences`, `profiles`), active la sécurité au niveau ligne (Row Level Security — chaque utilisateur ne voit/modifie que ses propres données), un trigger qui crée automatiquement un profil à l'inscription, et un bucket de stockage privé `clothing-photos` pour les photos.
+3. Dans **Project Settings → API**, récupérer l'**URL du projet** et la **clé publique** (`publishable`/`anon` — jamais la clé `secret`/`service_role`, qui ne doit jamais quitter un environnement serveur).
+
+### Connecter l'app
+
+```bash
+# .env.local (jamais commité, voir .gitignore)
+VITE_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+`src/supabaseClient.js` initialise le client à partir de ces variables. Si elles sont absentes, `supabase` vaut `null` et un avertissement est affiché dans la console — l'app continue de fonctionner en local uniquement. Pour un déploiement Vercel, ajouter les mêmes variables dans Project Settings → Environment Variables (Production et Preview) ; pour une app native (Capacitor), elles sont lues au moment du build (`npm run cap:sync`), comme `VITE_API_BASE_URL`.
+
 ## Structure
 
 - `AthenaStyle.jsx` — composant applicatif principal (tous les écrans).
 - `src/App.jsx` — réexporte `AthenaStyle.jsx`.
+- `src/supabaseClient.js` — client Supabase (auth + base de données + stockage), clés lues depuis les variables d'environnement.
+- `supabase/schema.sql` — schéma de base de données Supabase (tables, Row Level Security, bucket de stockage) à exécuter dans le SQL Editor du projet.
 - `api/analyze-clothing.js` — fonction serverless Vercel : reconnaissance photo via Claude Vision (clé API côté serveur uniquement).
 - `vercel.json` — config de déploiement Vercel (build, réécriture SPA, durée max de la fonction).
 - `capacitor.config.json` — configuration Capacitor (appId, appName, webDir, couleurs).
