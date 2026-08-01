@@ -3,7 +3,7 @@ import {
   Home, Shirt, Sparkles, Heart, User, Plus, Camera, Upload, Check,
   ArrowLeft, Send, Calendar, Sun, CloudSun, Cloud, CloudRain, Wind,
   Footprints, Watch, ChevronRight, TrendingUp, Clock, Lightbulb,
-  Loader2, MapPin, RefreshCw, Trash2, X, createLucideIcon, Mail, Lock,
+  Loader2, MapPin, RefreshCw, Trash2, X, createLucideIcon, Mail, Lock, Eye, EyeOff,
 } from 'lucide-react';
 import { supabase } from './src/supabaseClient.js';
 
@@ -1719,6 +1719,7 @@ function AuthScreen({ onBack, onAuthSuccess }) {
   const [mode, setMode] = useState('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
@@ -1729,14 +1730,32 @@ function AuthScreen({ onBack, onAuthSuccess }) {
     setInfo(null);
   }
 
+  // Si les variables VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY sont absentes de
+  // l'environnement qui sert l'app (fichier .env.local en dev, variables Vercel en prod —
+  // voir le README), `supabase` vaut null. Plutôt qu'un simple message discret dans le
+  // formulaire (facile à manquer, et qui donnait l'impression que le bouton "ne faisait
+  // rien"), on remplace tout l'écran par un état explicite pour que ce soit sans ambiguïté.
+  if (!supabase) {
+    return (
+      <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
+        <ScreenHeader title="Mon compte" onBack={onBack} />
+        <div className="bg-pink/15 rounded-3xl p-5 shadow-sm flex flex-col items-center text-center gap-2">
+          <Sparkles size={22} className="text-mauve" />
+          <p className="text-teal text-sm font-medium">La sauvegarde cloud n'est pas configurée</p>
+          <p className="text-teal/70 text-xs leading-relaxed">
+            VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY sont absentes de l'environnement qui sert l'app
+            (fichier .env.local en développement, variables Vercel en production). Voir le README, section
+            "Compte et sauvegarde cloud".
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   async function handleSubmit() {
     setError(null);
     setInfo(null);
 
-    if (!supabase) {
-      setError("La sauvegarde cloud n'est pas configurée pour le moment.");
-      return;
-    }
     if (!email.trim() || !password) {
       setError('Renseigne ton email et ton mot de passe.');
       return;
@@ -1824,12 +1843,20 @@ function AuthScreen({ onBack, onAuthSuccess }) {
         <div className="relative">
           <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-mauve/60" />
           <input
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="8 caractères minimum"
-            className="w-full bg-pink/15 rounded-xl pl-11 pr-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+            className="w-full bg-pink/15 rounded-xl pl-11 pr-11 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
           />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-mauve/60"
+          >
+            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
         </div>
       </div>
 
