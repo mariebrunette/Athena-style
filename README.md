@@ -90,7 +90,12 @@ Toutes les données utilisateur (dressing, favoris, agenda, préférences de pro
 
 ## Compte et sauvegarde cloud (Supabase)
 
-**En cours de mise en place.** Le dressing lui-même reste aujourd'hui 100% local (voir "Persistance des données" ci-dessus) : la connexion à [Supabase](https://supabase.com) prépare l'authentification par email et la sauvegarde cloud pour que le dressing survive à une désinstallation ou un changement de téléphone, mais la synchronisation des données n'est pas encore branchée. Se connecter permet aujourd'hui uniquement d'avoir un compte (email + mot de passe, écran "Mon compte" accessible depuis Profil) ; le dressing, lui, continue de vivre uniquement dans le stockage local jusqu'à la prochaine étape.
+**En cours de mise en place.** [Supabase](https://supabase.com) fournit l'authentification par email et la sauvegarde cloud pour que le dressing survive à une désinstallation ou un changement de téléphone.
+
+- **Vêtements (`clothes`)** : synchronisés avec Supabase dès que tu es connectée — lecture au démarrage, écriture à chaque ajout/modification/suppression. Le stockage local (`@capacitor/preferences`) continue de recevoir une copie de tout ce qui s'affiche, ce qui sert de cache hors-ligne : au lancement, le dressing local s'affiche immédiatement (jamais d'attente réseau), puis la version cloud le remplace en arrière-plan si elle est disponible ; si le réseau est coupé, le cache local reste affiché sans erreur bloquante.
+- **Tenues, favoris, agenda, préférences** : toujours 100% locaux pour l'instant — ce sera une étape séparée.
+- **Photos** : la colonne `photo_path` de la table `clothes` contient encore un chemin de fichier local (pas encore une photo Supabase Storage) — une photo ajoutée sur un appareil n'est donc pas encore visible sur un autre appareil connecté au même compte. C'est l'étape suivante.
+- **Actions réseau qui échouent** : ajouter, modifier ou supprimer un vêtement attend la confirmation de Supabase avant de s'appliquer, et affiche un message clair en cas d'échec (rien n'est perdu, il suffit de réessayer). Cocher "Au lavage" est en revanche appliqué immédiatement à l'écran et synchronisé discrètement derrière, car c'est une action fréquente et sans conséquence grave si elle doit être retapée.
 
 ### Créer le projet Supabase
 

@@ -81,6 +81,65 @@ async function deletePhotoFile(path) {
   await Filesystem.deleteFile({ path, directory: Directory.Data }).catch(() => {});
 }
 
+// Passerelle entre le modèle JS (camelCase, utilisé partout dans l'app) et les colonnes
+// Supabase (snake_case, voir supabase/schema.sql). photo_path reste pour l'instant un
+// chemin de fichier LOCAL à l'appareil (pas encore une photo Supabase Storage — ce sera
+// l'étape suivante) : les photos ne sont donc pas encore visibles d'un appareil à l'autre.
+function clothingRowToItem(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    photo: row.photo_path,
+    color: row.color ?? undefined,
+    colorFamily: row.color_family ?? undefined,
+    material: row.material ?? undefined,
+    season: row.season ?? undefined,
+    warmth: row.warmth,
+    laundry: row.laundry,
+    wearCount: row.wear_count,
+    monthsSinceWorn: row.months_since_worn,
+  };
+}
+
+function clothingItemToRow(item, userId) {
+  return {
+    user_id: userId,
+    name: item.name,
+    category: item.category,
+    photo_path: item.photo ?? null,
+    color: item.color ?? null,
+    color_family: item.colorFamily ?? null,
+    material: item.material ?? null,
+    season: item.season ?? null,
+    warmth: item.warmth ?? 'leger',
+    laundry: item.laundry ?? false,
+    wear_count: item.wearCount ?? 0,
+    months_since_worn: item.monthsSinceWorn ?? null,
+  };
+}
+
+// Timeout garanti en JS, comme pour la géolocalisation et l'analyse photo : en réseau
+// coupé ou instable, le client Supabase peut mettre plusieurs secondes à abandonner tout
+// seul (nouvelles tentatives internes) avant de rejeter — sans ça, l'app resterait bloquée
+// sur l'écran de chargement au lieu de basculer rapidement sur le cache local.
+async function fetchCloudClothes(timeoutMs = 8000) {
+  const { data, error } = await supabase
+    .from('clothes')
+    .select('*')
+    .order('created_at')
+    .abortSignal(AbortSignal.timeout(timeoutMs));
+  if (error) throw error;
+  return data.map(clothingRowToItem);
+}
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Délai dépassé')), ms)),
+  ]);
+}
+
 const PhotoSrcContext = createContext({});
 
 const CATEGORIES = [
@@ -1768,14 +1827,14 @@ function AuthScreen({ onBack, onAuthSuccess }) {
     setLoading(true);
     try {
       if (mode === 'signin') {
-        const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { data, error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (err) throw err;
-        onAuthSuccess();
+        onAuthSuccess(data.session);
       } else {
         const { data, error: err } = await supabase.auth.signUp({ email: email.trim(), password });
         if (err) throw err;
         if (data.session) {
-          onAuthSuccess();
+          onAuthSuccess(data.session);
         } else {
           setInfo('Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse avant de te connecter.');
           setMode('signin');
@@ -1931,6 +1990,8 @@ function SingleAddForm({ onSave }) {
   const [detecting, setDetecting] = useState(false);
   const [autoDetected, setAutoDetected] = useState(false);
   const [detectionError, setDetectionError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
@@ -1969,18 +2030,25 @@ function SingleAddForm({ onSave }) {
     reader.readAsDataURL(file);
   }
 
-  function handleSubmit() {
-    if (!category) return;
-    onSave({
-      name: name.trim() || `${CATEGORIES.find((c) => c.id === category).label} sans nom`,
-      category,
-      photo,
-      color: color ?? (photo ? undefined : PLACEHOLDER_COLORS[category]),
-      colorFamily,
-      warmth,
-      material,
-      season,
-    });
+  async function handleSubmit() {
+    if (!category || saving) return;
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await onSave({
+        name: name.trim() || `${CATEGORIES.find((c) => c.id === category).label} sans nom`,
+        category,
+        photo,
+        color: color ?? (photo ? undefined : PLACEHOLDER_COLORS[category]),
+        colorFamily,
+        warmth,
+        material,
+        season,
+      });
+    } catch {
+      setSaveError("L'enregistrement a échoué (vérifie ta connexion) — le vêtement n'a pas été ajouté.");
+      setSaving(false);
+    }
   }
 
   return (
@@ -2153,14 +2221,21 @@ function SingleAddForm({ onSave }) {
         </div>
       </div>
 
+      {saveError && (
+        <p className="text-xs text-mauve flex items-center gap-1.5 -mt-3 px-1">
+          <Sparkles size={12} className="shrink-0" /> {saveError}
+        </p>
+      )}
+
       <button
         onClick={handleSubmit}
-        disabled={!category || detecting}
+        disabled={!category || detecting || saving}
         className={`w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 transition ${
-          category && !detecting ? 'bg-mauve text-cream active:scale-[0.98]' : 'bg-bluegray/40 text-teal/40'
+          category && !detecting && !saving ? 'bg-mauve text-cream active:scale-[0.98]' : 'bg-bluegray/40 text-teal/40'
         }`}
       >
-        <Check size={18} /> Valider
+        {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+        Valider
       </button>
     </>
   );
@@ -2311,6 +2386,8 @@ function QuickAddEditModal({ item, onChange, onClose }) {
 function QuickAddPanel({ onSaveMany }) {
   const [queue, setQueue] = useState([]);
   const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const galleryInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const activeCountRef = useRef(0);
@@ -2420,8 +2497,9 @@ function QuickAddPanel({ onSaveMany }) {
     if (editingId === id) setEditingId(null);
   }
 
-  function handleSaveAll() {
-    if (!queue.length || isAnalyzing) return;
+  async function handleSaveAll() {
+    if (!queue.length || isAnalyzing || saving) return;
+    setSaveError(null);
     const items = queue.map((it) => {
       const categoryMeta = CATEGORIES.find((c) => c.id === it.category);
       return {
@@ -2435,8 +2513,16 @@ function QuickAddPanel({ onSaveMany }) {
         season: it.season,
       };
     });
-    onSaveMany(items);
-    setQueue([]);
+    setSaving(true);
+    try {
+      await onSaveMany(items);
+      setQueue([]);
+    } catch {
+      // Réseau indisponible : la file reste intacte pour que rien ne soit perdu, l'ajout
+      // pourra être retenté d'un tap sur le même bouton une fois la connexion revenue.
+      setSaveError("L'enregistrement a échoué (vérifie ta connexion) — rien n'a été perdu, réessaie.");
+      setSaving(false);
+    }
   }
 
   return (
@@ -2533,16 +2619,26 @@ function QuickAddPanel({ onSaveMany }) {
         </div>
       )}
 
+      {saveError && (
+        <p className="text-xs text-mauve flex items-center gap-1.5 -mt-1 px-1">
+          <Sparkles size={12} className="shrink-0" /> {saveError}
+        </p>
+      )}
+
       <button
         onClick={handleSaveAll}
-        disabled={!queue.length || isAnalyzing}
+        disabled={!queue.length || isAnalyzing || saving}
         className={`w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 transition ${
-          queue.length && !isAnalyzing ? 'bg-mauve text-cream active:scale-[0.98]' : 'bg-bluegray/40 text-teal/40'
+          queue.length && !isAnalyzing && !saving ? 'bg-mauve text-cream active:scale-[0.98]' : 'bg-bluegray/40 text-teal/40'
         }`}
       >
         {isAnalyzing ? (
           <>
             <Loader2 size={18} className="animate-spin" /> Analyse en cours...
+          </>
+        ) : saving ? (
+          <>
+            <Loader2 size={18} className="animate-spin" /> Enregistrement...
           </>
         ) : (
           <>
@@ -2636,6 +2732,10 @@ function ClothingDetailScreen({ item, onBack, onSave, onDelete }) {
   const [warmth, setWarmth] = useState(item?.warmth ?? 'leger');
   const [laundry, setLaundry] = useState(item?.laundry ?? false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
 
   if (!item) {
     return (
@@ -2653,17 +2753,37 @@ function ClothingDetailScreen({ item, onBack, onSave, onDelete }) {
         ? 'Ce mois-ci'
         : `Il y a ${item.monthsSinceWorn} mois`;
 
-  function handleSave() {
-    onSave(item.id, {
-      name: name.trim() || item.name,
-      category,
-      colorFamily,
-      color,
-      material,
-      season,
-      warmth,
-      laundry,
-    });
+  async function handleSave() {
+    if (saving) return;
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await onSave(item.id, {
+        name: name.trim() || item.name,
+        category,
+        colorFamily,
+        color,
+        material,
+        season,
+        warmth,
+        laundry,
+      });
+    } catch {
+      setSaveError("L'enregistrement a échoué (vérifie ta connexion), réessaie.");
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (deleting) return;
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await onDelete(item.id);
+    } catch {
+      setDeleteError('La suppression a échoué (vérifie ta connexion), réessaie.');
+      setDeleting(false);
+    }
   }
 
   return (
@@ -2811,18 +2931,36 @@ function ClothingDetailScreen({ item, onBack, onSave, onDelete }) {
         </div>
       </div>
 
+      {saveError && (
+        <p className="text-xs text-mauve flex items-center gap-1.5 -mt-2 px-1">
+          <Sparkles size={12} className="shrink-0" /> {saveError}
+        </p>
+      )}
+
       <button
         onClick={handleSave}
-        className="w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 bg-mauve text-cream active:scale-[0.98] transition"
+        disabled={saving}
+        className={`w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 transition ${
+          saving ? 'bg-bluegray/40 text-teal/40' : 'bg-mauve text-cream active:scale-[0.98]'
+        }`}
       >
-        <Check size={18} /> Enregistrer les modifications
+        {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+        Enregistrer les modifications
       </button>
+
+      {deleteError && (
+        <p className="text-xs text-mauve flex items-center gap-1.5 -mt-2 px-1">
+          <Sparkles size={12} className="shrink-0" /> {deleteError}
+        </p>
+      )}
 
       <button
         onClick={() => setShowDeleteConfirm(true)}
-        className="w-full rounded-full py-3 font-medium flex items-center justify-center gap-2 border border-mauve/40 text-mauve transition"
+        disabled={deleting}
+        className="w-full rounded-full py-3 font-medium flex items-center justify-center gap-2 border border-mauve/40 text-mauve transition disabled:opacity-60"
       >
-        <Trash2 size={16} /> Supprimer cet article
+        {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+        Supprimer cet article
       </button>
 
       {showDeleteConfirm && (
@@ -2831,7 +2969,10 @@ function ClothingDetailScreen({ item, onBack, onSave, onDelete }) {
           message={`"${item.name}" sera définitivement supprimé de ton dressing, de tes tenues et de tes favoris. Cette action est irréversible.`}
           confirmLabel="Supprimer"
           onCancel={() => setShowDeleteConfirm(false)}
-          onConfirm={() => onDelete(item.id)}
+          onConfirm={() => {
+            setShowDeleteConfirm(false);
+            handleDelete();
+          }}
         />
       )}
     </div>
@@ -2954,12 +3095,12 @@ export default function AthenaStyle() {
     tempMin: null,
   });
 
-  // Suit la session Supabase (connecté/déconnecté) indépendamment du chargement des
-  // données locales ci-dessous : à ce stade, être connecté n'affecte encore que l'écran
-  // Profil (affichage de l'email, vraie déconnexion) — le dressing reste local (étape 4).
+  // Suit la session Supabase (connecté/déconnecté) : ne gère ici que les changements DE
+  // SESSION APRÈS le démarrage (l'état initial est résolu une seule fois dans l'effet de
+  // chargement ci-dessous, pour pouvoir décider dès le premier rendu si le dressing doit
+  // venir du cloud ou du stockage local).
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, newSession) => setSession(newSession));
@@ -2970,6 +3111,18 @@ export default function AthenaStyle() {
     let cancelled = false;
 
     async function loadAll() {
+      let initialSession = null;
+      if (supabase) {
+        try {
+          const { data } = await withTimeout(supabase.auth.getSession(), 5000);
+          initialSession = data.session;
+        } catch {
+          // Session illisible ou réseau trop lent : on démarre déconnectée plutôt que de
+          // bloquer le lancement de l'app.
+        }
+      }
+      if (!cancelled) setSession(initialSession);
+
       const [
         loadedClothes,
         loadedOutfits,
@@ -2993,12 +3146,14 @@ export default function AthenaStyle() {
       ]);
 
       const photoEntries = await Promise.all(
-        loadedClothes
-          .filter((c) => c.photo)
-          .map(async (c) => [c.photo, await resolvePhotoSrc(c.photo)]),
+        loadedClothes.filter((c) => c.photo).map(async (c) => [c.photo, await resolvePhotoSrc(c.photo)]),
       );
 
       if (cancelled) return;
+      // Le dressing local (déjà chargé ci-dessus) s'affiche immédiatement, sans attendre
+      // le réseau : c'est le cache hors-ligne. Si connectée, la version cloud est demandée
+      // juste après, en arrière-plan, et remplace l'affichage dès qu'elle arrive — l'app ne
+      // reste jamais bloquée sur l'écran de chargement en attendant Supabase.
       setClothes(loadedClothes);
       setOutfits(loadedOutfits);
       setFavorites(loadedFavorites);
@@ -3010,6 +3165,10 @@ export default function AthenaStyle() {
       setNotif(loadedNotif);
       setPhotoSrcMap(Object.fromEntries(photoEntries));
       setAppReady(true);
+
+      if (supabase && initialSession) {
+        reloadClothesForSession(initialSession);
+      }
     }
 
     loadAll();
@@ -3139,47 +3298,81 @@ export default function AthenaStyle() {
     setScreen({ name: 'main' });
   }
 
+  // Charge le dressing depuis Supabase (connectée) ou depuis le stockage local
+  // (déconnectée), et résout les photos correspondantes. Appelé après une connexion, une
+  // inscription ou une déconnexion réussie pour que la vue reflète immédiatement le bon
+  // dressing, sans attendre un rechargement complet de l'app.
+  async function reloadClothesForSession(newSession) {
+    let nextClothes;
+    if (supabase && newSession) {
+      try {
+        nextClothes = await fetchCloudClothes();
+      } catch {
+        return; // Hors ligne : on garde ce qui est déjà affiché plutôt que de le vider.
+      }
+    } else {
+      nextClothes = await loadJSON(STORAGE_KEYS.clothes, seedClothes);
+    }
+    setClothes(nextClothes);
+    const photoEntries = await Promise.all(
+      nextClothes.filter((c) => c.photo).map(async (c) => [c.photo, await resolvePhotoSrc(c.photo)]),
+    );
+    setPhotoSrcMap((prev) => ({ ...prev, ...Object.fromEntries(photoEntries) }));
+  }
+
   async function addClothing(item) {
-    const id = `c${Date.now()}`;
     let photoPath = null;
     if (item.photo) {
-      photoPath = await savePhotoFile(item.photo, `${id}.jpg`);
+      photoPath = await savePhotoFile(item.photo, `local-${Date.now()}.jpg`);
       setPhotoSrcMap((prev) => ({ ...prev, [photoPath]: item.photo }));
     }
-    setClothes((prev) => [
-      ...prev,
-      { id, laundry: false, wearCount: 0, monthsSinceWorn: null, warmth: 'leger', ...item, photo: photoPath },
-    ]);
+    const draft = { laundry: false, wearCount: 0, monthsSinceWorn: null, warmth: 'leger', ...item, photo: photoPath };
+
+    if (supabase && session) {
+      const { data, error } = await supabase
+        .from('clothes')
+        .insert(clothingItemToRow(draft, session.user.id))
+        .select()
+        .single();
+      if (error) throw error;
+      setClothes((prev) => [...prev, clothingRowToItem(data)]);
+    } else {
+      setClothes((prev) => [...prev, { id: `c${Date.now()}`, ...draft }]);
+    }
     setTab('dressing');
     setScreen({ name: 'main' });
   }
 
   // Ajoute plusieurs vêtements d'un coup (mode "ajout rapide") : les photos sont écrites
   // sur le système de fichiers en parallèle puis tous les articles rejoignent le dressing
-  // en une seule mise à jour d'état.
+  // en une seule mise à jour d'état (un seul insert group côté Supabase si connectée).
   async function addClothingBatch(items) {
     const prepared = await Promise.all(
       items.map(async (item, idx) => {
-        const id = `c${Date.now()}-${idx}`;
         let photoPath = null;
         if (item.photo) {
-          photoPath = await savePhotoFile(item.photo, `${id}.jpg`);
+          photoPath = await savePhotoFile(item.photo, `local-${Date.now()}-${idx}.jpg`);
         }
-        return { id, photoPath, rawPhoto: item.photo, item };
+        return {
+          photoPath,
+          rawPhoto: item.photo,
+          draft: { laundry: false, wearCount: 0, monthsSinceWorn: null, warmth: 'leger', ...item, photo: photoPath },
+        };
       }),
     );
-    setClothes((prev) => [
-      ...prev,
-      ...prepared.map(({ id, photoPath, item }) => ({
-        id,
-        laundry: false,
-        wearCount: 0,
-        monthsSinceWorn: null,
-        warmth: 'leger',
-        ...item,
-        photo: photoPath,
-      })),
-    ]);
+
+    if (supabase && session) {
+      const rows = prepared.map(({ draft }) => clothingItemToRow(draft, session.user.id));
+      const { data, error } = await supabase.from('clothes').insert(rows).select();
+      if (error) throw error;
+      setClothes((prev) => [...prev, ...data.map(clothingRowToItem)]);
+    } else {
+      setClothes((prev) => [
+        ...prev,
+        ...prepared.map(({ draft }, idx) => ({ id: `c${Date.now()}-${idx}`, ...draft })),
+      ]);
+    }
+
     setPhotoSrcMap((prev) => {
       const next = { ...prev };
       prepared.forEach(({ photoPath, rawPhoto }) => {
@@ -3191,13 +3384,41 @@ export default function AthenaStyle() {
     setScreen({ name: 'main' });
   }
 
+  // Bascule optimiste (mise à jour immédiate à l'écran) avec synchronisation Supabase en
+  // arrière-plan : une action fréquente et anodine comme "au lavage" ne mérite pas
+  // d'attendre le réseau, et un échec ponctuel n'est pas grave (retaper dessus suffit).
   function toggleLaundry(clothingId) {
-    setClothes((prev) => prev.map((c) => (c.id === clothingId ? { ...c, laundry: !c.laundry } : c)));
+    const current = clothes.find((c) => c.id === clothingId);
+    if (!current) return;
+    const nextLaundry = !current.laundry;
+    setClothes((prev) => prev.map((c) => (c.id === clothingId ? { ...c, laundry: nextLaundry } : c)));
+    if (supabase && session) {
+      supabase
+        .from('clothes')
+        .update({ laundry: nextLaundry })
+        .eq('id', clothingId)
+        .then(({ error }) => {
+          if (error) console.warn('Synchronisation "au lavage" impossible (hors ligne ?) :', error.message);
+        })
+        .catch((err) => {
+          console.warn('Synchronisation "au lavage" impossible (hors ligne ?) :', err.message);
+        });
+    }
   }
 
   async function clearAllData() {
     await Promise.all(clothes.filter((c) => c.photo).map((c) => deletePhotoFile(c.photo)));
     await Promise.all(Object.values(STORAGE_KEYS).map((key) => Preferences.remove({ key })));
+    if (supabase && session) {
+      try {
+        const { error } = await supabase.from('clothes').delete().eq('user_id', session.user.id);
+        if (error) console.warn('Suppression du dressing cloud impossible (hors ligne ?) :', error.message);
+      } catch (err) {
+        // Réseau indisponible : on efface quand même l'appareil plutôt que de bloquer
+        // "Effacer mes données" sur un problème de connexion.
+        console.warn('Suppression du dressing cloud impossible (hors ligne ?) :', err.message);
+      }
+    }
     setClothes(seedClothes);
     setOutfits(seedOutfits);
     setFavorites(['o3']);
@@ -3343,7 +3564,16 @@ export default function AthenaStyle() {
             )}
             {screen.name === 'stats' && <StatsScreen clothes={clothes} onBack={goBack} />}
             {screen.name === 'privacy' && <PrivacyScreen onBack={goBack} />}
-            {screen.name === 'auth' && <AuthScreen onBack={goBack} onAuthSuccess={goBack} />}
+            {screen.name === 'auth' && (
+              <AuthScreen
+                onBack={goBack}
+                onAuthSuccess={(newSession) => {
+                  setSession(newSession);
+                  reloadClothesForSession(newSession);
+                  goBack();
+                }}
+              />
+            )}
             {screen.name === 'add-item' && (
               <AddItemScreen onBack={goBack} onSave={addClothing} onSaveMany={addClothingBatch} />
             )}
@@ -3390,11 +3620,22 @@ export default function AthenaStyle() {
               <ClothingDetailScreen
                 item={clothingDetailItem}
                 onBack={goBack}
-                onSave={(id, patch) => {
+                onSave={async (id, patch) => {
+                  if (supabase && session) {
+                    const { error } = await supabase
+                      .from('clothes')
+                      .update(clothingItemToRow(patch, session.user.id))
+                      .eq('id', id);
+                    if (error) throw error;
+                  }
                   setClothes((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
                   goBack();
                 }}
                 onDelete={async (id) => {
+                  if (supabase && session) {
+                    const { error } = await supabase.from('clothes').delete().eq('id', id);
+                    if (error) throw error;
+                  }
                   const target = clothes.find((c) => c.id === id);
                   if (target?.photo) await deletePhotoFile(target.photo);
                   setClothes((prev) => prev.filter((c) => c.id !== id));
@@ -3459,6 +3700,8 @@ export default function AthenaStyle() {
                   // Réseau indisponible : on ferme quand même la boîte de dialogue plutôt
                   // que de bloquer l'utilisatrice sur un état intermédiaire.
                 } finally {
+                  setSession(null);
+                  reloadClothesForSession(null);
                   setShowLogoutConfirm(false);
                 }
               }}
