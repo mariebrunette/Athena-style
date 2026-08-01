@@ -90,7 +90,7 @@ Toutes les données utilisateur (dressing, favoris, agenda, préférences de pro
 
 ## Compte et sauvegarde cloud (Supabase)
 
-**En cours de mise en place.** L'app reste aujourd'hui 100% locale (voir "Persistance des données" ci-dessus) : ce qui suit prépare la connexion à [Supabase](https://supabase.com) (authentification par email + base de données + stockage des photos) pour que le dressing survive à une désinstallation ou un changement de téléphone. Rien n'est encore branché à l'interface — l'app fonctionne exactement comme avant tant que l'authentification (étape suivante) n'est pas en place.
+**En cours de mise en place.** Le dressing lui-même reste aujourd'hui 100% local (voir "Persistance des données" ci-dessus) : la connexion à [Supabase](https://supabase.com) prépare l'authentification par email et la sauvegarde cloud pour que le dressing survive à une désinstallation ou un changement de téléphone, mais la synchronisation des données n'est pas encore branchée. Se connecter permet aujourd'hui uniquement d'avoir un compte (email + mot de passe, écran "Mon compte" accessible depuis Profil) ; le dressing, lui, continue de vivre uniquement dans le stockage local jusqu'à la prochaine étape.
 
 ### Créer le projet Supabase
 

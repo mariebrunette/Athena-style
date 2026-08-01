@@ -3,20 +3,23 @@ import {
   Home, Shirt, Sparkles, Heart, User, Plus, Camera, Upload, Check,
   ArrowLeft, Send, Calendar, Sun, CloudSun, Cloud, CloudRain, Wind,
   Footprints, Watch, ChevronRight, TrendingUp, Clock, Lightbulb,
-  Loader2, MapPin, RefreshCw, Trash2, X, createLucideIcon,
+  Loader2, MapPin, RefreshCw, Trash2, X, createLucideIcon, Mail, Lock,
 } from 'lucide-react';
+import { supabase } from './src/supabaseClient.js';
 
 // lucide-react ne fournit pas d'icônes pantalon/robe/veste dédiées (seulement "shirt" et
 // "sport-shoe") : on les dessine avec le même helper que la librairie utilise en interne
 // pour ses propres icônes, afin qu'elles héritent exactement du même style (trait,
 // épaisseur, coins arrondis) et des mêmes props (size, className, etc.).
 const Pants = createLucideIcon('pants', [
-  ['path', { d: 'M6 3H18l-1 18h-2l-2-14-1 2-1-2-2 14H7Z' }],
+  ['path', { d: 'M6 3H18l-1 18h-2l-2-14-1 2-1-2-2 14H7Z', key: 'pants-1' }],
 ]);
-const Dress = createLucideIcon('dress', [['path', { d: 'M10 3 12 6 14 3 19 21H5Z' }]]);
+const Dress = createLucideIcon('dress', [
+  ['path', { d: 'M10 3 12 6 14 3 19 21H5Z', key: 'dress-1' }],
+]);
 const Blazer = createLucideIcon('blazer', [
-  ['path', { d: 'M5 4h14l-1 17H6Z' }],
-  ['path', { d: 'M9 4 12 10 15 4' }],
+  ['path', { d: 'M5 4h14l-1 17H6Z', key: 'blazer-1' }],
+  ['path', { d: 'M9 4 12 10 15 4', key: 'blazer-2' }],
 ]);
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
@@ -1326,6 +1329,8 @@ function ProfileScreen({
   onOpenMeasurements,
   onOpenStylePrefs,
   onOpenStats,
+  session,
+  onOpenAuth,
   onLogoutClick,
   onOpenPrivacy,
   onClearDataClick,
@@ -1344,18 +1349,31 @@ function ProfileScreen({
     : undefined;
 
   const styleValue = stylePrefs.length ? stylePrefs.join(', ') : undefined;
+  const email = session?.user?.email;
 
   return (
     <div className="px-5 pt-6 pb-6 flex flex-col gap-5">
-      <div className="flex flex-col items-center gap-3 pt-2">
-        <div className="w-20 h-20 rounded-full bg-pink/50 flex items-center justify-center text-mauve text-2xl font-semibold">
-          MB
+      {email ? (
+        <div className="flex flex-col items-center gap-3 pt-2">
+          <div className="w-20 h-20 rounded-full bg-pink/50 flex items-center justify-center text-mauve text-2xl font-semibold">
+            {email.slice(0, 2).toUpperCase()}
+          </div>
+          <div className="text-center">
+            <h1 className="text-mauve text-xl font-semibold">Mon compte</h1>
+            <p className="text-mauve text-sm">{email}</p>
+          </div>
         </div>
-        <div className="text-center">
-          <h1 className="text-mauve text-xl font-semibold">Marie Brunette</h1>
-          <p className="text-mauve text-sm">marie.brunette35@gmail.com</p>
-        </div>
-      </div>
+      ) : (
+        <button onClick={onOpenAuth} className="flex flex-col items-center gap-3 pt-2">
+          <div className="w-20 h-20 rounded-full bg-pink/50 flex items-center justify-center text-mauve">
+            <User size={30} />
+          </div>
+          <div className="text-center">
+            <p className="text-mauve font-semibold">Se connecter</p>
+            <p className="text-mauve/70 text-xs">Sauvegarde ton dressing dans le cloud</p>
+          </div>
+        </button>
+      )}
 
       <div className="grid grid-cols-3 gap-3">
         <StatCard label="Vêtements" value={clothes.length} />
@@ -1386,9 +1404,11 @@ function ProfileScreen({
         <ToggleRow label="Notifications" value={notif} onChange={onToggleNotif} />
       </div>
 
-      <button onClick={onLogoutClick} className="w-full text-mauve text-sm py-3 font-medium">
-        Se déconnecter
-      </button>
+      {email && (
+        <button onClick={onLogoutClick} className="w-full text-mauve text-sm py-3 font-medium">
+          Se déconnecter
+        </button>
+      )}
 
       <button
         onClick={onClearDataClick}
@@ -1682,6 +1702,162 @@ function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Traduit les messages d'erreur bruts renvoyés par Supabase Auth en français, pour ne
+// jamais afficher de texte technique anglais à l'utilisatrice.
+const AUTH_ERROR_MESSAGES = {
+  'Invalid login credentials': 'Email ou mot de passe incorrect.',
+  'User already registered': 'Un compte existe déjà avec cet email — connecte-toi plutôt.',
+  'Email not confirmed': 'Confirme ton adresse email (lien reçu par mail) avant de te connecter.',
+  'Password should be at least 6 characters': 'Le mot de passe doit contenir au moins 6 caractères.',
+};
+
+function AuthScreen({ onBack, onAuthSuccess }) {
+  const [mode, setMode] = useState('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [info, setInfo] = useState(null);
+
+  function switchMode(next) {
+    setMode(next);
+    setError(null);
+    setInfo(null);
+  }
+
+  async function handleSubmit() {
+    setError(null);
+    setInfo(null);
+
+    if (!supabase) {
+      setError("La sauvegarde cloud n'est pas configurée pour le moment.");
+      return;
+    }
+    if (!email.trim() || !password) {
+      setError('Renseigne ton email et ton mot de passe.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Le mot de passe doit contenir au moins 6 caractères.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (mode === 'signin') {
+        const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (err) throw err;
+        onAuthSuccess();
+      } else {
+        const { data, error: err } = await supabase.auth.signUp({ email: email.trim(), password });
+        if (err) throw err;
+        if (data.session) {
+          onAuthSuccess();
+        } else {
+          setInfo('Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse avant de te connecter.');
+          setMode('signin');
+        }
+      }
+    } catch (err) {
+      const isNetworkError = err instanceof TypeError || /fetch|network/i.test(err.message || '');
+      setError(
+        isNetworkError
+          ? 'Impossible de contacter le service. Vérifie ta connexion et réessaie.'
+          : AUTH_ERROR_MESSAGES[err.message] || err.message || 'Une erreur est survenue, réessaie.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="px-5 pt-6 pb-8 flex flex-col gap-5">
+      <ScreenHeader title="Mon compte" onBack={onBack} />
+
+      <div className="flex gap-1 bg-pink/10 rounded-full p-1">
+        <button
+          onClick={() => switchMode('signin')}
+          className={`flex-1 rounded-full py-2 text-sm font-medium transition ${
+            mode === 'signin' ? 'bg-mauve text-cream' : 'text-teal/70'
+          }`}
+        >
+          Se connecter
+        </button>
+        <button
+          onClick={() => switchMode('signup')}
+          className={`flex-1 rounded-full py-2 text-sm font-medium transition ${
+            mode === 'signup' ? 'bg-mauve text-cream' : 'text-teal/70'
+          }`}
+        >
+          Créer un compte
+        </button>
+      </div>
+
+      <p className="text-sm text-teal leading-relaxed -mt-2">
+        {mode === 'signin'
+          ? 'Connecte-toi pour retrouver ton dressing sur tous tes appareils.'
+          : "Crée un compte pour ne plus jamais perdre ton dressing, même en cas de changement de téléphone."}
+      </p>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Email</label>
+        <div className="relative">
+          <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-mauve/60" />
+          <input
+            type="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="toi@exemple.com"
+            className="w-full bg-pink/15 rounded-xl pl-11 pr-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-teal text-sm font-medium mb-2 block">Mot de passe</label>
+        <div className="relative">
+          <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-mauve/60" />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="8 caractères minimum"
+            className="w-full bg-pink/15 rounded-xl pl-11 pr-4 py-3 text-sm text-teal outline-none shadow-sm placeholder:text-mauve/50"
+          />
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-xs text-mauve flex items-center gap-1.5 -mt-2 px-1">
+          <Sparkles size={12} className="shrink-0" /> {error}
+        </p>
+      )}
+      {info && (
+        <p className="text-xs text-mauve flex items-center gap-1.5 -mt-2 px-1">
+          <Sparkles size={12} className="shrink-0" /> {info}
+        </p>
+      )}
+
+      <button
+        onClick={handleSubmit}
+        disabled={loading}
+        className={`w-full rounded-full py-3.5 font-medium flex items-center justify-center gap-2 transition ${
+          loading ? 'bg-bluegray/40 text-teal/40' : 'bg-mauve text-cream active:scale-[0.98]'
+        }`}
+      >
+        {loading ? (
+          <Loader2 size={18} className="animate-spin" />
+        ) : (
+          <Check size={18} />
+        )}
+        {mode === 'signin' ? 'Se connecter' : 'Créer mon compte'}
+      </button>
     </div>
   );
 }
@@ -2739,6 +2915,7 @@ export default function AthenaStyle() {
   const [notif, setNotif] = useState(true);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showClearDataConfirm, setShowClearDataConfirm] = useState(false);
+  const [session, setSession] = useState(null);
   const [appReady, setAppReady] = useState(false);
   const [photoSrcMap, setPhotoSrcMap] = useState({});
   const [todayWeather, setTodayWeather] = useState({ temp: 18, condition: 'nuageux' });
@@ -2749,6 +2926,18 @@ export default function AthenaStyle() {
     tempMax: null,
     tempMin: null,
   });
+
+  // Suit la session Supabase (connecté/déconnecté) indépendamment du chargement des
+  // données locales ci-dessous : à ce stade, être connecté n'affecte encore que l'écran
+  // Profil (affichage de l'email, vraie déconnexion) — le dressing reste local (étape 4).
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => setSession(newSession));
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -3118,6 +3307,8 @@ export default function AthenaStyle() {
                 onOpenMeasurements={() => openScreen('measurements')}
                 onOpenStylePrefs={() => openScreen('style-prefs')}
                 onOpenStats={() => openScreen('stats')}
+                session={session}
+                onOpenAuth={() => openScreen('auth')}
                 onLogoutClick={() => setShowLogoutConfirm(true)}
                 onOpenPrivacy={openPrivacy}
                 onClearDataClick={() => setShowClearDataConfirm(true)}
@@ -3125,6 +3316,7 @@ export default function AthenaStyle() {
             )}
             {screen.name === 'stats' && <StatsScreen clothes={clothes} onBack={goBack} />}
             {screen.name === 'privacy' && <PrivacyScreen onBack={goBack} />}
+            {screen.name === 'auth' && <AuthScreen onBack={goBack} onAuthSuccess={goBack} />}
             {screen.name === 'add-item' && (
               <AddItemScreen onBack={goBack} onSave={addClothing} onSaveMany={addClothingBatch} />
             )}
@@ -3233,7 +3425,16 @@ export default function AthenaStyle() {
               message="Voulez-vous vraiment vous déconnecter ?"
               confirmLabel="Confirmer"
               onCancel={() => setShowLogoutConfirm(false)}
-              onConfirm={() => setShowLogoutConfirm(false)}
+              onConfirm={async () => {
+                try {
+                  if (supabase) await supabase.auth.signOut();
+                } catch {
+                  // Réseau indisponible : on ferme quand même la boîte de dialogue plutôt
+                  // que de bloquer l'utilisatrice sur un état intermédiaire.
+                } finally {
+                  setShowLogoutConfirm(false);
+                }
+              }}
             />
           )}
 
