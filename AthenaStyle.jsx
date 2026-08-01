@@ -3,8 +3,21 @@ import {
   Home, Shirt, Sparkles, Heart, User, Plus, Camera, Upload, Check,
   ArrowLeft, Send, Calendar, Sun, CloudSun, Cloud, CloudRain, Wind,
   Footprints, Watch, ChevronRight, TrendingUp, Clock, Lightbulb,
-  Loader2, MapPin, RefreshCw, Trash2, X,
+  Loader2, MapPin, RefreshCw, Trash2, X, createLucideIcon,
 } from 'lucide-react';
+
+// lucide-react ne fournit pas d'icônes pantalon/robe/veste dédiées (seulement "shirt" et
+// "sport-shoe") : on les dessine avec le même helper que la librairie utilise en interne
+// pour ses propres icônes, afin qu'elles héritent exactement du même style (trait,
+// épaisseur, coins arrondis) et des mêmes props (size, className, etc.).
+const Pants = createLucideIcon('pants', [
+  ['path', { d: 'M6 3H18l-1 18h-2l-2-14-1 2-1-2-2 14H7Z' }],
+]);
+const Dress = createLucideIcon('dress', [['path', { d: 'M10 3 12 6 14 3 19 21H5Z' }]]);
+const Blazer = createLucideIcon('blazer', [
+  ['path', { d: 'M5 4h14l-1 17H6Z' }],
+  ['path', { d: 'M9 4 12 10 15 4' }],
+]);
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -69,9 +82,9 @@ const PhotoSrcContext = createContext({});
 
 const CATEGORIES = [
   { id: 'haut', label: 'Haut', icon: Shirt },
-  { id: 'bas', label: 'Bas', icon: Shirt },
-  { id: 'robe', label: 'Robe', icon: Shirt },
-  { id: 'veste', label: 'Veste', icon: Shirt },
+  { id: 'bas', label: 'Bas', icon: Pants },
+  { id: 'robe', label: 'Robe', icon: Dress },
+  { id: 'veste', label: 'Veste', icon: Blazer },
   { id: 'chaussures', label: 'Chaussures', icon: Footprints },
   { id: 'accessoire', label: 'Accessoire', icon: Watch },
 ];
