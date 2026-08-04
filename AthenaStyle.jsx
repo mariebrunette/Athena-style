@@ -3395,8 +3395,10 @@ export default function AthenaStyle() {
     if (supabase && session) {
       try {
         return await uploadClothingPhoto(dataUrl, session.user.id, fileName);
-      } catch {
-        // repli local ci-dessous
+      } catch (err) {
+        // Repli local ci-dessous, mais on trace la vraie cause : un échec silencieux ici
+        // est indiscernable d'un simple "hors ligne" sans ce message.
+        console.warn("Upload de la photo vers Supabase Storage impossible, repli local :", err);
       }
     }
     return savePhotoFile(dataUrl, `local-${fileName}`);
