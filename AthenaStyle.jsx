@@ -62,8 +62,31 @@ async function savePhotoFile(dataUrl, fileName) {
   return fileName;
 }
 
+const CLOTHING_PHOTOS_BUCKET = 'clothing-photos';
+
+// Les chemins locaux (générés par savePhotoFile, ex: "local-123.jpg") ne contiennent
+// jamais de "/". Les chemins cloud sont toujours de la forme "{user_id}/{fichier}" (voir
+// supabase/schema.sql, storage.foldername) : la présence d'un "/" suffit à les distinguer,
+// sans avoir besoin d'une colonne séparée.
+function isCloudPhotoPath(path) {
+  return typeof path === 'string' && path.includes('/');
+}
+
 async function resolvePhotoSrc(path) {
   if (!path) return null;
+  if (isCloudPhotoPath(path)) {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await withTimeout(
+        supabase.storage.from(CLOTHING_PHOTOS_BUCKET).createSignedUrl(path, 3600),
+        8000,
+      );
+      if (error) throw error;
+      return data.signedUrl;
+    } catch {
+      return null;
+    }
+  }
   try {
     if (Capacitor.isNativePlatform()) {
       const { uri } = await Filesystem.getUri({ path, directory: Directory.Data });
@@ -79,6 +102,32 @@ async function resolvePhotoSrc(path) {
 async function deletePhotoFile(path) {
   if (!path) return;
   await Filesystem.deleteFile({ path, directory: Directory.Data }).catch(() => {});
+}
+
+// Envoie une photo déjà compressée (dataURL) vers le bucket privé clothing-photos, sous
+// {user_id}/{fichier} — la convention attendue par les policies RLS de storage.objects.
+// fetch() sur une dataURL ne fait aucun appel réseau : c'est juste une façon standard
+// d'obtenir un Blob à partir du base64 déjà en mémoire.
+async function uploadClothingPhoto(dataUrl, userId, fileName) {
+  const blob = await (await fetch(dataUrl)).blob();
+  const path = `${userId}/${fileName}`;
+  const { error } = await supabase.storage
+    .from(CLOTHING_PHOTOS_BUCKET)
+    .upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: true });
+  if (error) throw error;
+  return path;
+}
+
+// Point d'entrée unique pour supprimer la photo d'un vêtement, qu'elle soit locale ou
+// cloud — pour ne jamais laisser de fichier orphelin ni dans le Filesystem ni dans le
+// bucket Supabase.
+async function deleteClothingPhotoAny(path) {
+  if (!path) return;
+  if (isCloudPhotoPath(path)) {
+    if (supabase) await supabase.storage.from(CLOTHING_PHOTOS_BUCKET).remove([path]).catch(() => {});
+  } else {
+    await deletePhotoFile(path);
+  }
 }
 
 // Passerelle entre le modèle JS (camelCase, utilisé partout dans l'app) et les colonnes
@@ -117,6 +166,24 @@ function clothingItemToRow(item, userId) {
     wear_count: item.wearCount ?? 0,
     months_since_worn: item.monthsSinceWorn ?? null,
   };
+}
+
+// Pour une mise à jour PARTIELLE (fiche détail), à la différence de clothingItemToRow :
+// seuls les champs réellement présents dans `patch` sont convertis. Un champ absent (ex:
+// `photo`, que la fiche détail ne modifie jamais) ne doit surtout pas être envoyé comme
+// `null` à Supabase, sous peine d'effacer une valeur existante à chaque enregistrement.
+function clothingPatchToRow(patch) {
+  const row = {};
+  if ('name' in patch) row.name = patch.name;
+  if ('category' in patch) row.category = patch.category;
+  if ('photo' in patch) row.photo_path = patch.photo ?? null;
+  if ('color' in patch) row.color = patch.color ?? null;
+  if ('colorFamily' in patch) row.color_family = patch.colorFamily ?? null;
+  if ('material' in patch) row.material = patch.material ?? null;
+  if ('season' in patch) row.season = patch.season ?? null;
+  if ('warmth' in patch) row.warmth = patch.warmth ?? 'leger';
+  if ('laundry' in patch) row.laundry = patch.laundry ?? false;
+  return row;
 }
 
 // Timeout garanti en JS, comme pour la géolocalisation et l'analyse photo : en réseau
@@ -3320,10 +3387,25 @@ export default function AthenaStyle() {
     setPhotoSrcMap((prev) => ({ ...prev, ...Object.fromEntries(photoEntries) }));
   }
 
+  // Envoie la photo vers le bucket Supabase Storage si connectée ; si l'upload échoue
+  // (hors ligne, par ex.) ou si déconnectée, repli sur le système de fichiers local pour
+  // ne jamais perdre la photo — elle ne sera alors visible que sur cet appareil, jusqu'à
+  // une prochaine synchronisation.
+  async function saveClothingPhotoAny(dataUrl, fileName) {
+    if (supabase && session) {
+      try {
+        return await uploadClothingPhoto(dataUrl, session.user.id, fileName);
+      } catch {
+        // repli local ci-dessous
+      }
+    }
+    return savePhotoFile(dataUrl, `local-${fileName}`);
+  }
+
   async function addClothing(item) {
     let photoPath = null;
     if (item.photo) {
-      photoPath = await savePhotoFile(item.photo, `local-${Date.now()}.jpg`);
+      photoPath = await saveClothingPhotoAny(item.photo, `${Date.now()}.jpg`);
       setPhotoSrcMap((prev) => ({ ...prev, [photoPath]: item.photo }));
     }
     const draft = { laundry: false, wearCount: 0, monthsSinceWorn: null, warmth: 'leger', ...item, photo: photoPath };
@@ -3343,15 +3425,15 @@ export default function AthenaStyle() {
     setScreen({ name: 'main' });
   }
 
-  // Ajoute plusieurs vêtements d'un coup (mode "ajout rapide") : les photos sont écrites
-  // sur le système de fichiers en parallèle puis tous les articles rejoignent le dressing
-  // en une seule mise à jour d'état (un seul insert group côté Supabase si connectée).
+  // Ajoute plusieurs vêtements d'un coup (mode "ajout rapide") : les photos sont envoyées
+  // en parallèle (cloud si connectée, sinon local) puis tous les articles rejoignent le
+  // dressing en une seule mise à jour d'état (un seul insert group côté Supabase si connectée).
   async function addClothingBatch(items) {
     const prepared = await Promise.all(
       items.map(async (item, idx) => {
         let photoPath = null;
         if (item.photo) {
-          photoPath = await savePhotoFile(item.photo, `local-${Date.now()}-${idx}.jpg`);
+          photoPath = await saveClothingPhotoAny(item.photo, `${Date.now()}-${idx}.jpg`);
         }
         return {
           photoPath,
@@ -3407,7 +3489,7 @@ export default function AthenaStyle() {
   }
 
   async function clearAllData() {
-    await Promise.all(clothes.filter((c) => c.photo).map((c) => deletePhotoFile(c.photo)));
+    await Promise.all(clothes.filter((c) => c.photo).map((c) => deleteClothingPhotoAny(c.photo)));
     await Promise.all(Object.values(STORAGE_KEYS).map((key) => Preferences.remove({ key })));
     if (supabase && session) {
       try {
@@ -3622,10 +3704,7 @@ export default function AthenaStyle() {
                 onBack={goBack}
                 onSave={async (id, patch) => {
                   if (supabase && session) {
-                    const { error } = await supabase
-                      .from('clothes')
-                      .update(clothingItemToRow(patch, session.user.id))
-                      .eq('id', id);
+                    const { error } = await supabase.from('clothes').update(clothingPatchToRow(patch)).eq('id', id);
                     if (error) throw error;
                   }
                   setClothes((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -3637,7 +3716,7 @@ export default function AthenaStyle() {
                     if (error) throw error;
                   }
                   const target = clothes.find((c) => c.id === id);
-                  if (target?.photo) await deletePhotoFile(target.photo);
+                  if (target?.photo) await deleteClothingPhotoAny(target.photo);
                   setClothes((prev) => prev.filter((c) => c.id !== id));
                   setOutfits((prev) => prev.map((o) => ({ ...o, itemIds: o.itemIds.filter((iid) => iid !== id) })));
                   goBack();
